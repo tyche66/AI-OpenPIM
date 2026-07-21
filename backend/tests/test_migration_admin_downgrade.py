@@ -110,7 +110,7 @@ def test_preexisting_admin_preserved_on_downgrade():
         # 升级前已存在 admin -> 本迁移 NOT EXISTS 守卫不重复插入。
         assert _admin_count(eng) == 1
         assert _count(eng, "role") == 4
-        assert _count(eng, "permission") == 49
+        assert _count(eng, "permission") == 53
         assert _count(eng, "role_permission") == 95
         alembic_downgrade(url, "0003_add_quotation_subtotal")
         # 升级前已有 admin 必须保留（其 id 与迁移确定性 id 不同）。
@@ -130,7 +130,7 @@ def test_downgrade_then_upgrade_recreates_admin():
         alembic_upgrade(url, "head")
         assert _admin_count(eng) == 1
         assert _count(eng, "role") == 4
-        assert _count(eng, "permission") == 49
+        assert _count(eng, "permission") == 53
         assert _count(eng, "role_permission") == 95
     finally:
         _reset_schema(url)

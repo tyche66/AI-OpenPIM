@@ -143,6 +143,13 @@ jobs:
           --health-retries 12
     env:
       DATABASE_URL: postgresql://pim:pim_password@localhost:5433/ai_pim_ci_empty
+      REDIS_URL: redis://localhost:6379/0
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ACCESS_KEY: minio
+      MINIO_SECRET_KEY: minio12345
+      JWT_SECRET: ci-jwt-secret-placeholder-not-for-prod
+      AI_ADAPTER: none
+      OCR_ADAPTER: none
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
