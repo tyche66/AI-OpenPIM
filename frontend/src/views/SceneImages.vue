@@ -3,8 +3,12 @@
     <!-- Header -->
     <div class="si-header">
       <div>
-        <h2 class="si-title">场景图管理</h2>
-        <p class="si-subtitle">管理用于产品展示和客户分享的场景图片</p>
+        <h2 class="si-title">
+          场景图管理
+        </h2>
+        <p class="si-subtitle">
+          管理用于产品展示和客户分享的场景图片
+        </p>
       </div>
       <div class="header-actions">
         <el-button
@@ -48,19 +52,55 @@
         />
       </div>
       <div class="toolbar-right">
-        <el-select v-model="statusFilter" placeholder="绑定状态" clearable class="si-filter">
-          <el-option label="全部" value="" />
-          <el-option label="已绑定产品" value="bound" />
-          <el-option label="未绑定产品" value="unbound" />
+        <el-select
+          v-model="statusFilter"
+          placeholder="绑定状态"
+          clearable
+          class="si-filter"
+        >
+          <el-option
+            label="全部"
+            value=""
+          />
+          <el-option
+            label="已绑定产品"
+            value="bound"
+          />
+          <el-option
+            label="未绑定产品"
+            value="unbound"
+          />
         </el-select>
-        <el-select v-model="sortOrder" placeholder="排序" class="si-filter">
-          <el-option label="最新创建" value="newest" />
-          <el-option label="名称 A-Z" value="name_asc" />
-          <el-option label="名称 Z-A" value="name_desc" />
-          <el-option label="绑定数量（多到少）" value="bound_desc" />
-          <el-option label="绑定数量（少到多）" value="bound_asc" />
+        <el-select
+          v-model="sortOrder"
+          placeholder="排序"
+          class="si-filter"
+        >
+          <el-option
+            label="最新创建"
+            value="newest"
+          />
+          <el-option
+            label="名称 A-Z"
+            value="name_asc"
+          />
+          <el-option
+            label="名称 Z-A"
+            value="name_desc"
+          />
+          <el-option
+            label="绑定数量（多到少）"
+            value="bound_desc"
+          />
+          <el-option
+            label="绑定数量（少到多）"
+            value="bound_asc"
+          />
         </el-select>
-        <el-radio-group v-model="viewMode" size="small">
+        <el-radio-group
+          v-model="viewMode"
+          size="small"
+        >
           <el-radio-button value="grid">
             <el-icon><Grid /></el-icon>
           </el-radio-button>
@@ -72,7 +112,11 @@
     </div>
 
     <!-- Gallery Grid -->
-    <div v-if="viewMode === 'grid'" class="si-gallery" v-loading="loading">
+    <div
+      v-if="viewMode === 'grid'"
+      v-loading="loading"
+      class="si-gallery"
+    >
       <div
         v-for="item in items"
         :key="item.id"
@@ -87,7 +131,10 @@
             @click.stop="toggleSelect(item)"
           />
         </div>
-        <div class="gallery-thumb" @click.stop="openPreview(item)">
+        <div
+          class="gallery-thumb"
+          @click.stop="openPreview(item)"
+        >
           <el-image
             :src="item.preview_url || item.file_url"
             fit="cover"
@@ -95,21 +142,42 @@
           >
             <template #error>
               <div class="thumb-placeholder">
-                <el-icon :size="32"><Picture /></el-icon>
+                <el-icon :size="32">
+                  <Picture />
+                </el-icon>
               </div>
             </template>
           </el-image>
-          <div class="gallery-overlay" @click.stop>
-            <el-button circle size="small" @click="openPreview(item)">
+          <div
+            class="gallery-overlay"
+            @click.stop
+          >
+            <el-button
+              circle
+              size="small"
+              @click="openPreview(item)"
+            >
               <el-icon><ZoomIn /></el-icon>
             </el-button>
-            <el-button circle size="small" @click.stop="handleEdit(item)">
+            <el-button
+              circle
+              size="small"
+              @click.stop="handleEdit(item)"
+            >
               <el-icon><Edit /></el-icon>
             </el-button>
-            <el-button circle size="small" @click.stop="handleBindProducts(item)">
+            <el-button
+              circle
+              size="small"
+              @click.stop="handleBindProducts(item)"
+            >
               <el-icon><Link /></el-icon>
             </el-button>
-            <el-button circle size="small" @click.stop="openBindingsDrawer(item)">
+            <el-button
+              circle
+              size="small"
+              @click.stop="openBindingsDrawer(item)"
+            >
               <el-icon><View /></el-icon>
             </el-button>
             <el-button
@@ -124,7 +192,9 @@
           </div>
         </div>
         <div class="gallery-info">
-          <p class="gallery-name">{{ item.name }}</p>
+          <p class="gallery-name">
+            {{ item.name }}
+          </p>
           <div class="gallery-meta">
             <span><el-icon><Sort /></el-icon> {{ item.sort }}</span>
             <span>{{ formatDate(item.update_time) }}</span>
@@ -139,15 +209,27 @@
               <el-icon><Link /></el-icon>
               已绑定 {{ item.bound_products.length }} 个产品
             </el-tag>
-            <el-tag v-else size="small" type="info" effect="plain">
+            <el-tag
+              v-else
+              size="small"
+              type="info"
+              effect="plain"
+            >
               未绑定
             </el-tag>
           </div>
         </div>
       </div>
-      <div v-if="items.length === 0 && !loading" class="gallery-empty">
+      <div
+        v-if="items.length === 0 && !loading"
+        class="gallery-empty"
+      >
         <el-empty description="暂无场景图">
-          <el-button v-if="canCreate" type="primary" @click="openCreate">
+          <el-button
+            v-if="canCreate"
+            type="primary"
+            @click="openCreate"
+          >
             新建场景图
           </el-button>
         </el-empty>
@@ -155,7 +237,11 @@
     </div>
 
     <!-- List View -->
-    <div v-else class="si-list" v-loading="loading">
+    <div
+      v-else
+      v-loading="loading"
+      class="si-list"
+    >
       <el-table
         :data="items"
         stripe
@@ -163,8 +249,16 @@
         @row-dblclick="handleEdit"
         @selection-change="handleSelectionChange"
       >
-        <el-table-column type="selection" width="40" align="center" />
-        <el-table-column label="缩略图" width="100" align="center">
+        <el-table-column
+          type="selection"
+          width="40"
+          align="center"
+        />
+        <el-table-column
+          label="缩略图"
+          width="100"
+          align="center"
+        >
           <template #default="{ row }">
             <el-image
               :src="row.preview_url || row.file_url"
@@ -174,15 +268,30 @@
             >
               <template #error>
                 <div class="thumb-placeholder">
-                  <el-icon :size="24"><Picture /></el-icon>
+                  <el-icon :size="24">
+                    <Picture />
+                  </el-icon>
                 </div>
               </template>
             </el-image>
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="名称" min-width="180" />
-        <el-table-column prop="sort" label="排序" width="80" align="center" />
-        <el-table-column label="绑定产品" width="120" align="center">
+        <el-table-column
+          prop="name"
+          label="名称"
+          min-width="180"
+        />
+        <el-table-column
+          prop="sort"
+          label="排序"
+          width="80"
+          align="center"
+        />
+        <el-table-column
+          label="绑定产品"
+          width="120"
+          align="center"
+        >
           <template #default="{ row }">
             <el-tag
               :type="row.bound_products.length > 0 ? 'warning' : 'info'"
@@ -193,15 +302,49 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="更新时间" width="160">
-          <template #default="{ row }">{{ formatDate(row.update_time) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="300" align="center" fixed="right">
+        <el-table-column
+          label="更新时间"
+          width="160"
+        >
           <template #default="{ row }">
-            <el-button text size="small" @click="openPreview(row)">预览</el-button>
-            <el-button text size="small" @click="handleEdit(row)">编辑</el-button>
-            <el-button text size="small" @click="handleBindProducts(row)">绑定</el-button>
-            <el-button text size="small" @click="openBindingsDrawer(row)">查看绑定</el-button>
+            {{ formatDate(row.update_time) }}
+          </template>
+        </el-table-column>
+        <el-table-column
+          label="操作"
+          width="300"
+          align="center"
+          fixed="right"
+        >
+          <template #default="{ row }">
+            <el-button
+              text
+              size="small"
+              @click="openPreview(row)"
+            >
+              预览
+            </el-button>
+            <el-button
+              text
+              size="small"
+              @click="handleEdit(row)"
+            >
+              编辑
+            </el-button>
+            <el-button
+              text
+              size="small"
+              @click="handleBindProducts(row)"
+            >
+              绑定
+            </el-button>
+            <el-button
+              text
+              size="small"
+              @click="openBindingsDrawer(row)"
+            >
+              查看绑定
+            </el-button>
             <el-button
               v-if="canDelete"
               text
@@ -217,7 +360,10 @@
     </div>
 
     <!-- Pagination -->
-    <div class="pagination-bar" v-if="total > 0">
+    <div
+      v-if="total > 0"
+      class="pagination-bar"
+    >
       <el-pagination
         v-model:current-page="page"
         v-model:page-size="pageSize"
@@ -245,7 +391,10 @@
         :rules="rules"
         label-width="90px"
       >
-        <el-form-item label="场景图图片" prop="attachment_id">
+        <el-form-item
+          label="场景图图片"
+          prop="attachment_id"
+        >
           <div class="media-select-area">
             <el-image
               v-if="selectedMedia"
@@ -256,7 +405,9 @@
             >
               <template #error>
                 <div class="thumb-placeholder">
-                  <el-icon :size="24"><Picture /></el-icon>
+                  <el-icon :size="24">
+                    <Picture />
+                  </el-icon>
                 </div>
               </template>
             </el-image>
@@ -280,7 +431,10 @@
             </el-button>
           </div>
         </el-form-item>
-        <el-form-item label="场景图名称" prop="name">
+        <el-form-item
+          label="场景图名称"
+          prop="name"
+        >
           <el-input
             v-model="form.name"
             class="capsule-input"
@@ -294,7 +448,9 @@
             class="capsule-number full-width"
           />
         </el-form-item>
-        <el-divider content-position="left">绑定产品（可选）</el-divider>
+        <el-divider content-position="left">
+          绑定产品（可选）
+        </el-divider>
         <el-form-item label="直接绑定">
           <div class="bind-products-inline">
             <el-input
@@ -305,7 +461,10 @@
               class="bind-search-input"
               @input="searchProductsForCreate"
             />
-            <div v-loading="productSearchLoading" class="product-search-results">
+            <div
+              v-loading="productSearchLoading"
+              class="product-search-results"
+            >
               <div
                 v-for="p in productSearchResults"
                 :key="p.id"
@@ -321,10 +480,21 @@
                     class="product-thumb-img"
                   >
                     <template #error>
-                      <div class="thumb-placeholder"><el-icon :size="16"><Picture /></el-icon></div>
+                      <div class="thumb-placeholder">
+                        <el-icon :size="16">
+                          <Picture />
+                        </el-icon>
+                      </div>
                     </template>
                   </el-image>
-                  <div v-else class="thumb-placeholder"><el-icon :size="16"><Goods /></el-icon></div>
+                  <div
+                    v-else
+                    class="thumb-placeholder"
+                  >
+                    <el-icon :size="16">
+                      <Goods />
+                    </el-icon>
+                  </div>
                 </div>
                 <div class="product-info">
                   <span class="product-no">{{ p.product_no }}</span>
@@ -334,10 +504,21 @@
                   v-if="formProductIds.includes(p.id)"
                   color="var(--el-color-success)"
                   :size="16"
-                ><Check /></el-icon>
-                <el-icon v-else color="var(--el-color-primary)" :size="16"><Plus /></el-icon>
+                >
+                  <Check />
+                </el-icon>
+                <el-icon
+                  v-else
+                  color="var(--el-color-primary)"
+                  :size="16"
+                >
+                  <Plus />
+                </el-icon>
               </div>
-              <div v-if="productSearchResults.length === 0 && !productSearchLoading" class="empty-tip">
+              <div
+                v-if="productSearchResults.length === 0 && !productSearchLoading"
+                class="empty-tip"
+              >
                 输入关键词搜索产品
               </div>
             </div>
@@ -345,7 +526,12 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button class="capsule-btn" @click="showCreateDialog = false">取消</el-button>
+        <el-button
+          class="capsule-btn"
+          @click="showCreateDialog = false"
+        >
+          取消
+        </el-button>
         <el-button
           type="primary"
           :loading="saving"
@@ -368,7 +554,10 @@
       destroy-on-close
       width="700px"
     >
-      <div v-if="bindingItem" class="bind-dialog-body">
+      <div
+        v-if="bindingItem"
+        class="bind-dialog-body"
+      >
         <div class="bind-info">
           <el-image
             :src="bindingItem.preview_url || bindingItem.file_url"
@@ -376,17 +565,30 @@
             class="bind-thumb"
           />
           <div class="bind-meta">
-            <p class="bind-name">{{ bindingItem.name }}</p>
-            <p class="bind-count">已绑定 {{ bindingItem.bound_products.length }} 个产品</p>
+            <p class="bind-name">
+              {{ bindingItem.name }}
+            </p>
+            <p class="bind-count">
+              已绑定 {{ bindingItem.bound_products.length }} 个产品
+            </p>
           </div>
         </div>
 
         <el-tabs v-model="bindTab">
-          <el-tab-pane label="已绑定产品" name="bound">
-            <div v-if="bindingItem.bound_products.length === 0" class="empty-tip">
+          <el-tab-pane
+            label="已绑定产品"
+            name="bound"
+          >
+            <div
+              v-if="bindingItem.bound_products.length === 0"
+              class="empty-tip"
+            >
               暂无已绑定产品，请切换到"添加绑定"标签页
             </div>
-            <div v-else class="bound-product-list">
+            <div
+              v-else
+              class="bound-product-list"
+            >
               <div
                 v-for="p in bindingItem.bound_products"
                 :key="p.id"
@@ -415,7 +617,10 @@
               </div>
             </div>
           </el-tab-pane>
-          <el-tab-pane label="添加绑定" name="add">
+          <el-tab-pane
+            label="添加绑定"
+            name="add"
+          >
             <div class="add-bind-section">
               <el-input
                 v-model="bindSearch"
@@ -425,7 +630,10 @@
                 class="capsule-input"
                 @input="searchProducts"
               />
-              <div v-loading="productSearchLoading" class="product-search-results">
+              <div
+                v-loading="productSearchLoading"
+                class="product-search-results"
+              >
                 <div
                   v-for="p in productSearchResults"
                   :key="p.id"
@@ -441,10 +649,21 @@
                       class="product-thumb-img"
                     >
                       <template #error>
-                        <div class="thumb-placeholder"><el-icon :size="16"><Picture /></el-icon></div>
+                        <div class="thumb-placeholder">
+                          <el-icon :size="16">
+                            <Picture />
+                          </el-icon>
+                        </div>
                       </template>
                     </el-image>
-                    <div v-else class="thumb-placeholder"><el-icon :size="16"><Goods /></el-icon></div>
+                    <div
+                      v-else
+                      class="thumb-placeholder"
+                    >
+                      <el-icon :size="16">
+                        <Goods />
+                      </el-icon>
+                    </div>
                   </div>
                   <span class="product-no">{{ p.product_no }}</span>
                   <span class="product-name">{{ p.product_name }}</span>
@@ -452,10 +671,21 @@
                     v-if="isProductBound(p.id)"
                     color="var(--el-color-success)"
                     :size="16"
-                  ><Check /></el-icon>
-                  <el-icon v-else color="var(--el-color-primary)" :size="16"><Plus /></el-icon>
+                  >
+                    <Check />
+                  </el-icon>
+                  <el-icon
+                    v-else
+                    color="var(--el-color-primary)"
+                    :size="16"
+                  >
+                    <Plus />
+                  </el-icon>
                 </div>
-                <div v-if="productSearchResults.length === 0 && !productSearchLoading" class="empty-tip">
+                <div
+                  v-if="productSearchResults.length === 0 && !productSearchLoading"
+                  class="empty-tip"
+                >
                   未找到匹配产品
                 </div>
               </div>
@@ -464,7 +694,12 @@
         </el-tabs>
       </div>
       <template #footer>
-        <el-button class="capsule-btn" @click="showBindDialog = false">关闭</el-button>
+        <el-button
+          class="capsule-btn"
+          @click="showBindDialog = false"
+        >
+          关闭
+        </el-button>
       </template>
     </el-dialog>
 
@@ -497,7 +732,10 @@
           class="capsule-input"
           @input="searchBatchProducts"
         />
-        <div v-loading="batchProductSearchLoading" class="product-search-results">
+        <div
+          v-loading="batchProductSearchLoading"
+          class="product-search-results"
+        >
           <div
             v-for="p in batchProductSearchResults"
             :key="p.id"
@@ -513,10 +751,21 @@
                 class="product-thumb-img"
               >
                 <template #error>
-                  <div class="thumb-placeholder"><el-icon :size="16"><Picture /></el-icon></div>
+                  <div class="thumb-placeholder">
+                    <el-icon :size="16">
+                      <Picture />
+                    </el-icon>
+                  </div>
                 </template>
               </el-image>
-              <div v-else class="thumb-placeholder"><el-icon :size="16"><Goods /></el-icon></div>
+              <div
+                v-else
+                class="thumb-placeholder"
+              >
+                <el-icon :size="16">
+                  <Goods />
+                </el-icon>
+              </div>
             </div>
             <span class="product-no">{{ p.product_no }}</span>
             <span class="product-name">{{ p.product_name }}</span>
@@ -524,16 +773,32 @@
               v-if="batchSelectedProductIds.includes(p.id)"
               color="var(--el-color-success)"
               :size="16"
-            ><Check /></el-icon>
-            <el-icon v-else color="var(--el-color-primary)" :size="16"><Plus /></el-icon>
+            >
+              <Check />
+            </el-icon>
+            <el-icon
+              v-else
+              color="var(--el-color-primary)"
+              :size="16"
+            >
+              <Plus />
+            </el-icon>
           </div>
-          <div v-if="batchProductSearchResults.length === 0 && !batchProductSearchLoading" class="empty-tip">
+          <div
+            v-if="batchProductSearchResults.length === 0 && !batchProductSearchLoading"
+            class="empty-tip"
+          >
             输入关键词搜索产品
           </div>
         </div>
       </div>
       <template #footer>
-        <el-button class="capsule-btn" @click="showBatchBindDialog = false">取消</el-button>
+        <el-button
+          class="capsule-btn"
+          @click="showBatchBindDialog = false"
+        >
+          取消
+        </el-button>
         <el-button
           type="primary"
           :loading="batchBinding"
@@ -555,7 +820,10 @@
       lock-scroll
       :before-close="handleCloseDrawer"
     >
-      <div v-if="drawerItem" class="drawer-body">
+      <div
+        v-if="drawerItem"
+        class="drawer-body"
+      >
         <div class="drawer-scene-info">
           <el-image
             :src="drawerItem.preview_url || drawerItem.file_url"
@@ -563,7 +831,9 @@
             class="drawer-scene-thumb"
           />
           <div class="drawer-scene-meta">
-            <p class="drawer-scene-name">{{ drawerItem.name }}</p>
+            <p class="drawer-scene-name">
+              {{ drawerItem.name }}
+            </p>
             <p class="drawer-scene-count">
               共绑定 <strong>{{ drawerItem.bound_products.length }}</strong> 个产品
             </p>
@@ -572,10 +842,16 @@
 
         <el-divider>绑定产品列表</el-divider>
 
-        <div v-if="drawerItem.bound_products.length === 0" class="empty-tip">
+        <div
+          v-if="drawerItem.bound_products.length === 0"
+          class="empty-tip"
+        >
           该场景图暂未绑定任何产品
         </div>
-        <div v-else class="drawer-product-list">
+        <div
+          v-else
+          class="drawer-product-list"
+        >
           <div
             v-for="p in drawerItem.bound_products"
             :key="p.id"

@@ -263,11 +263,11 @@
       <el-dialog
         v-if="editMode"
         v-model="editMode"
-         title="编辑产品"
-         class="glass-dialog"
-         append-to-body
-         lock-scroll
-         :close-on-click-modal="false"
+        title="编辑产品"
+        class="glass-dialog"
+        append-to-body
+        lock-scroll
+        :close-on-click-modal="false"
         destroy-on-close
       >
         <el-form

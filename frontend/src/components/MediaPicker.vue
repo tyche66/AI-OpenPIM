@@ -1,7 +1,6 @@
 <template>
   <el-dialog
     :model-value="modelValue"
-    @update:model-value="emit('update:modelValue', $event)"
     title="选择媒体文件"
     width="65%"
     append-to-body
@@ -9,6 +8,7 @@
     destroy-on-close
     top="5vh"
     class="media-picker-dialog"
+    @update:model-value="emit('update:modelValue', $event)"
   >
     <div class="picker-body">
       <div class="picker-toolbar">
@@ -19,22 +19,49 @@
           :prefix-icon="Search"
           class="picker-search"
         />
-        <el-select v-model="typeFilter" placeholder="类型筛选" class="picker-filter">
-          <el-option label="全部" value="all" />
-          <el-option label="图片" value="image" />
-          <el-option label="PDF" value="pdf" />
+        <el-select
+          v-model="localTypeFilter"
+          placeholder="类型筛选"
+          class="picker-filter"
+        >
+          <el-option
+            label="全部"
+            value="all"
+          />
+          <el-option
+            label="图片"
+            value="image"
+          />
+          <el-option
+            label="PDF"
+            value="pdf"
+          />
         </el-select>
       </div>
 
-      <div v-if="loading" class="picker-loading">
-        <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+      <div
+        v-if="loading"
+        class="picker-loading"
+      >
+        <el-icon
+          class="is-loading"
+          :size="32"
+        >
+          <Loading />
+        </el-icon>
       </div>
 
-      <div v-else-if="filteredItems.length === 0" class="picker-empty">
+      <div
+        v-else-if="filteredItems.length === 0"
+        class="picker-empty"
+      >
         <el-empty description="暂无媒体文件" />
       </div>
 
-      <div v-else class="picker-grid">
+      <div
+        v-else
+        class="picker-grid"
+      >
         <div
           v-for="item in filteredItems"
           :key="item.id"
@@ -49,23 +76,48 @@
               :src="item.thumbnailUrl || item.url"
               :alt="item.name"
               loading="lazy"
-            />
-            <el-icon v-else :size="36"><Document /></el-icon>
+            >
+            <el-icon
+              v-else
+              :size="36"
+            >
+              <Document />
+            </el-icon>
           </div>
           <div class="picker-mask">
-            <p class="picker-name">{{ item.name }}</p>
-            <p class="picker-size">{{ formatSize(item.size) }}</p>
+            <p class="picker-name">
+              {{ item.name }}
+            </p>
+            <p class="picker-size">
+              {{ formatSize(item.size) }}
+            </p>
           </div>
-          <div v-if="selectedId === item.id" class="picker-check">
-            <el-icon color="#fff" :size="16"><Check /></el-icon>
+          <div
+            v-if="selectedId === item.id"
+            class="picker-check"
+          >
+            <el-icon
+              color="#fff"
+              :size="16"
+            >
+              <Check />
+            </el-icon>
           </div>
         </div>
       </div>
     </div>
 
     <template #footer>
-      <el-button @click="emit('update:modelValue', false)">取消</el-button>
-      <el-button type="primary" :disabled="!selectedId" @click="confirm">确认选择</el-button>
+      <el-button @click="emit('update:modelValue', false)">
+        取消
+      </el-button>
+      <el-button
+        type="primary"
+        :disabled="!selectedId"
+        @click="confirm"
+      >
+        确认选择
+      </el-button>
     </template>
   </el-dialog>
 </template>
@@ -87,7 +139,7 @@ const emit = defineEmits<{
 }>()
 
 const searchQuery = ref('')
-const typeFilter = ref('all')
+const localTypeFilter = ref('all')
 const loading = ref(false)
 const items = ref<MediaItem[]>([])
 const selectedId = ref<string | null>(null)
@@ -95,7 +147,7 @@ const selectedId = ref<string | null>(null)
 watch(
   () => props.typeFilter,
   (val) => {
-    if (val) typeFilter.value = val
+    if (val) localTypeFilter.value = val
   },
   { immediate: true }
 )
@@ -103,7 +155,7 @@ watch(
 const filteredItems = computed(() =>
   items.value.filter((item) => {
     const matchSearch = item.name.toLowerCase().includes(searchQuery.value.toLowerCase())
-    const matchType = typeFilter.value === 'all' || item.type === typeFilter.value
+    const matchType = localTypeFilter.value === 'all' || item.type === localTypeFilter.value
     return matchSearch && matchType
   })
 )
@@ -111,13 +163,13 @@ const filteredItems = computed(() =>
 async function fetchItems() {
   loading.value = true
   try {
-    items.value = await mediaApi.list({ search: searchQuery.value, type: typeFilter.value })
+    items.value = await mediaApi.list({ search: searchQuery.value, type: localTypeFilter.value })
   } finally {
     loading.value = false
   }
 }
 
-watch([searchQuery, typeFilter], fetchItems)
+watch([searchQuery, localTypeFilter], fetchItems)
 
 watch(
   () => props.modelValue,

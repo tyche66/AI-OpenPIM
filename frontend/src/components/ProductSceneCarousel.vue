@@ -6,11 +6,20 @@
       @click.self="close"
     >
       <div class="scene-container">
-        <button class="scene-close" type="button" @click="close">
+        <button
+          class="scene-close"
+          type="button"
+          @click="close"
+        >
           <el-icon><Close /></el-icon>
         </button>
 
-        <div v-if="currentImage?.name" class="scene-name">{{ currentImage.name }}</div>
+        <div
+          v-if="currentImage?.name"
+          class="scene-name"
+        >
+          {{ currentImage.name }}
+        </div>
 
         <div
           class="scene-image-wrapper"
@@ -22,7 +31,7 @@
             :src="currentImage?.image_url"
             :alt="currentImage?.name || '场景图'"
             class="scene-image"
-          />
+          >
         </div>
 
         <button
@@ -42,9 +51,14 @@
           <el-icon><ArrowRight /></el-icon>
         </button>
 
-        <div class="scene-counter">{{ currentIndex + 1 }} / {{ images.length }}</div>
+        <div class="scene-counter">
+          {{ currentIndex + 1 }} / {{ images.length }}
+        </div>
 
-        <div v-if="images.length > 1" class="scene-dots">
+        <div
+          v-if="images.length > 1"
+          class="scene-dots"
+        >
           <span
             v-for="(_, i) in images"
             :key="i"

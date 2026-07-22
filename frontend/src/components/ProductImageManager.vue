@@ -1,7 +1,9 @@
 <template>
   <div class="product-image-manager">
     <div class="image-section-header">
-      <h4 class="section-title">产品图片</h4>
+      <h4 class="section-title">
+        产品图片
+      </h4>
       <span class="image-count">{{ images.length }}/10</span>
       <el-button
         size="small"
@@ -12,13 +14,24 @@
         + 添加图片
       </el-button>
     </div>
-    <p class="section-hint">解绑不会删除媒体库文件，仅移除与当前产品的关联</p>
+    <p class="section-hint">
+      解绑不会删除媒体库文件，仅移除与当前产品的关联
+    </p>
 
-    <div v-if="images.length === 0" class="empty-state">
-      <el-empty description="暂无产品图片" :image-size="80" />
+    <div
+      v-if="images.length === 0"
+      class="empty-state"
+    >
+      <el-empty
+        description="暂无产品图片"
+        :image-size="80"
+      />
     </div>
 
-    <div v-else class="image-grid">
+    <div
+      v-else
+      class="image-grid"
+    >
       <div
         v-for="(img, index) in images"
         :key="img.imageId"
@@ -33,13 +46,23 @@
           >
             <template #error>
               <div class="thumb-error">
-                <el-icon :size="24"><Picture /></el-icon>
+                <el-icon :size="24">
+                  <Picture />
+                </el-icon>
               </div>
             </template>
           </el-image>
-          <div v-if="img.isPrimary" class="primary-badge">主图</div>
+          <div
+            v-if="img.isPrimary"
+            class="primary-badge"
+          >
+            主图
+          </div>
           <div class="image-actions">
-            <el-tooltip content="设为主图" placement="top">
+            <el-tooltip
+              content="设为主图"
+              placement="top"
+            >
               <el-button
                 :icon="StarFilled"
                 size="small"
@@ -49,7 +72,10 @@
                 @click="setPrimary(img.imageId)"
               />
             </el-tooltip>
-            <el-tooltip content="上移" placement="top">
+            <el-tooltip
+              content="上移"
+              placement="top"
+            >
               <el-button
                 :icon="ArrowUp"
                 size="small"
@@ -58,7 +84,10 @@
                 @click="moveUp(index)"
               />
             </el-tooltip>
-            <el-tooltip content="下移" placement="top">
+            <el-tooltip
+              content="下移"
+              placement="top"
+            >
               <el-button
                 :icon="ArrowDown"
                 size="small"
@@ -67,7 +96,10 @@
                 @click="moveDown(index)"
               />
             </el-tooltip>
-            <el-tooltip content="解绑" placement="top">
+            <el-tooltip
+              content="解绑"
+              placement="top"
+            >
               <el-button
                 :icon="Remove"
                 size="small"
@@ -91,11 +123,20 @@
       destroy-on-close
     >
       <div class="dialog-scroll-body">
-        <el-tabs v-model="addTab" class="add-tabs">
-          <el-tab-pane label="上传图片" name="upload">
+        <el-tabs
+          v-model="addTab"
+          class="add-tabs"
+        >
+          <el-tab-pane
+            label="上传图片"
+            name="upload"
+          >
             <MediaUploader @uploaded="handleUploaded" />
           </el-tab-pane>
-          <el-tab-pane label="从媒体库选择" name="picker">
+          <el-tab-pane
+            label="从媒体库选择"
+            name="picker"
+          >
             <div class="picker-section">
               <el-button
                 type="primary"

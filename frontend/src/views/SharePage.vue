@@ -116,7 +116,7 @@
                           :src="row.cover_image_url"
                           class="thumb-img"
                           @error="onImgError(row)"
-                        />
+                        >
                         <span
                           v-else
                           class="thumb-placeholder"
@@ -193,7 +193,7 @@
                           :src="row.cover_image_url"
                           class="thumb-img"
                           @error="onImgError(row)"
-                        />
+                        >
                         <span
                           v-else
                           class="thumb-placeholder"

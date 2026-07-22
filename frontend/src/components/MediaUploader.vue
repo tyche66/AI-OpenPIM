@@ -12,15 +12,29 @@
       list-type="text"
       class="upload-zone"
     >
-      <el-icon class="upload-icon" :size="40"><UploadFilled /></el-icon>
+      <el-icon
+        class="upload-icon"
+        :size="40"
+      >
+        <UploadFilled />
+      </el-icon>
       <div class="upload-text">
-        <p class="text-lg font-semibold">点击上传 或 拖拽文件到此处</p>
-        <p class="text-sm text-gray-500 mt-1">支持 JPG, PNG, WebP, PDF (最大 50MB)</p>
+        <p class="text-lg font-semibold">
+          点击上传 或 拖拽文件到此处
+        </p>
+        <p class="text-sm text-gray-500 mt-1">
+          支持 JPG, PNG, WebP, PDF (最大 50MB)
+        </p>
       </div>
     </el-upload>
 
-    <div v-if="uploads.length > 0" class="upload-queue mt-4">
-      <h4 class="text-sm font-semibold text-gray-700 mb-2">上传队列 ({{ uploads.length }})</h4>
+    <div
+      v-if="uploads.length > 0"
+      class="upload-queue mt-4"
+    >
+      <h4 class="text-sm font-semibold text-gray-700 mb-2">
+        上传队列 ({{ uploads.length }})
+      </h4>
       <div
         v-for="item in uploads"
         :key="item.id"
@@ -31,23 +45,35 @@
             v-if="item.status === 'success'"
             class="status-icon success"
             :size="18"
-          ><CircleCheckFilled /></el-icon>
+          >
+            <CircleCheckFilled />
+          </el-icon>
           <el-icon
             v-else-if="item.status === 'error'"
             class="status-icon error"
             :size="18"
-          ><CircleCloseFilled /></el-icon>
+          >
+            <CircleCloseFilled />
+          </el-icon>
           <el-icon
             v-else
             class="status-icon loading"
             :size="18"
-          ><Loading /></el-icon>
+          >
+            <Loading />
+          </el-icon>
           <div class="upload-item-text">
             <span class="file-name">{{ item.name }}</span>
             <span class="file-meta">
               {{ formatSize(item.size) }}
-              <span v-if="item.status === 'uploading'" class="ml-1">— {{ item.progress }}%</span>
-              <span v-else-if="item.status === 'error'" class="ml-1 text-red-500">{{ item.error }}</span>
+              <span
+                v-if="item.status === 'uploading'"
+                class="ml-1"
+              >— {{ item.progress }}%</span>
+              <span
+                v-else-if="item.status === 'error'"
+                class="ml-1 text-red-500"
+              >{{ item.error }}</span>
             </span>
           </div>
         </div>

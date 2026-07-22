@@ -1,7 +1,9 @@
 <template>
   <div class="scene-image-selector">
     <div class="image-section-header">
-      <h4 class="section-title">场景图</h4>
+      <h4 class="section-title">
+        场景图
+      </h4>
       <span class="image-count">{{ images.length }}/30</span>
       <el-button
         size="small"
@@ -19,13 +21,24 @@
         去场景图管理
       </el-button>
     </div>
-    <p class="section-hint">解绑不会删除媒体库文件，仅移除与当前产品的关联</p>
+    <p class="section-hint">
+      解绑不会删除媒体库文件，仅移除与当前产品的关联
+    </p>
 
-    <div v-if="images.length === 0" class="empty-state">
-      <el-empty description="暂无场景图" :image-size="80" />
+    <div
+      v-if="images.length === 0"
+      class="empty-state"
+    >
+      <el-empty
+        description="暂无场景图"
+        :image-size="80"
+      />
     </div>
 
-    <div v-else class="image-grid">
+    <div
+      v-else
+      class="image-grid"
+    >
       <div
         v-for="(img, index) in images"
         :key="img.sceneImageId"
@@ -40,12 +53,17 @@
           >
             <template #error>
               <div class="thumb-error">
-                <el-icon :size="24"><Picture /></el-icon>
+                <el-icon :size="24">
+                  <Picture />
+                </el-icon>
               </div>
             </template>
           </el-image>
           <div class="image-actions">
-            <el-tooltip content="上移" placement="top">
+            <el-tooltip
+              content="上移"
+              placement="top"
+            >
               <el-button
                 :icon="ArrowUp"
                 size="small"
@@ -54,7 +72,10 @@
                 @click="moveUp(index)"
               />
             </el-tooltip>
-            <el-tooltip content="下移" placement="top">
+            <el-tooltip
+              content="下移"
+              placement="top"
+            >
               <el-button
                 :icon="ArrowDown"
                 size="small"
@@ -63,7 +84,10 @@
                 @click="moveDown(index)"
               />
             </el-tooltip>
-            <el-tooltip content="解绑" placement="top">
+            <el-tooltip
+              content="解绑"
+              placement="top"
+            >
               <el-button
                 :icon="Remove"
                 size="small"
@@ -89,77 +113,109 @@
     >
       <div class="dialog-scroll-body">
         <el-tabs v-model="selectorTab">
-        <!-- Tab: Choose Existing -->
-        <el-tab-pane label="选择已有场景图" name="existing">
-          <div class="selector-toolbar">
-            <el-input
-              v-model="sceneSearch"
-              placeholder="搜索场景图名称..."
-              clearable
-              :prefix-icon="Search"
-              class="selector-search"
-              @input="fetchSceneImages"
-            />
-          </div>
-          <div v-loading="sceneLoading" class="selector-body">
-            <div v-if="sceneItems.length === 0 && !sceneLoading" class="selector-empty">
-              <el-empty description="暂无场景图">
-                <el-button type="primary" size="small" @click="selectorTab = 'create'">
-                  去创建场景图
-                </el-button>
-              </el-empty>
+          <!-- Tab: Choose Existing -->
+          <el-tab-pane
+            label="选择已有场景图"
+            name="existing"
+          >
+            <div class="selector-toolbar">
+              <el-input
+                v-model="sceneSearch"
+                placeholder="搜索场景图名称..."
+                clearable
+                :prefix-icon="Search"
+                class="selector-search"
+                @input="fetchSceneImages"
+              />
             </div>
-            <div v-else class="selector-grid">
+            <div
+              v-loading="sceneLoading"
+              class="selector-body"
+            >
               <div
-                v-for="item in sceneItems"
-                :key="item.id"
-                class="selector-card"
-                :class="{ 'is-selected': selectedSceneId === item.id, 'is-bound': isBound(item.id) }"
-                @click="selectedSceneId = item.id"
-                @dblclick="confirmBindExisting"
+                v-if="sceneItems.length === 0 && !sceneLoading"
+                class="selector-empty"
               >
-                <div class="selector-thumb">
-                  <el-image
-                    :src="item.preview_url || item.file_url"
-                    fit="cover"
-                    class="selector-thumb-img"
+                <el-empty description="暂无场景图">
+                  <el-button
+                    type="primary"
+                    size="small"
+                    @click="selectorTab = 'create'"
                   >
-                    <template #error>
-                      <div class="thumb-error">
-                        <el-icon :size="24"><Picture /></el-icon>
-                      </div>
-                    </template>
-                  </el-image>
-                </div>
-                <div class="selector-info">
-                  <p class="selector-name">{{ item.name }}</p>
-                  <p class="selector-meta">
-                    <el-tag v-if="item.bound_products.length > 0" size="small" type="warning" effect="plain">
-                      已绑定 {{ item.bound_products.length }}
-                    </el-tag>
-                    <span v-else class="unbound-tag">未绑定</span>
-                  </p>
-                </div>
-                <div v-if="isBound(item.id)" class="bound-badge">
-                  <el-icon><Check /></el-icon>
-                  已绑定
+                    去创建场景图
+                  </el-button>
+                </el-empty>
+              </div>
+              <div
+                v-else
+                class="selector-grid"
+              >
+                <div
+                  v-for="item in sceneItems"
+                  :key="item.id"
+                  class="selector-card"
+                  :class="{ 'is-selected': selectedSceneId === item.id, 'is-bound': isBound(item.id) }"
+                  @click="selectedSceneId = item.id"
+                  @dblclick="confirmBindExisting"
+                >
+                  <div class="selector-thumb">
+                    <el-image
+                      :src="item.preview_url || item.file_url"
+                      fit="cover"
+                      class="selector-thumb-img"
+                    >
+                      <template #error>
+                        <div class="thumb-error">
+                          <el-icon :size="24">
+                            <Picture />
+                          </el-icon>
+                        </div>
+                      </template>
+                    </el-image>
+                  </div>
+                  <div class="selector-info">
+                    <p class="selector-name">
+                      {{ item.name }}
+                    </p>
+                    <p class="selector-meta">
+                      <el-tag
+                        v-if="item.bound_products.length > 0"
+                        size="small"
+                        type="warning"
+                        effect="plain"
+                      >
+                        已绑定 {{ item.bound_products.length }}
+                      </el-tag>
+                      <span
+                        v-else
+                        class="unbound-tag"
+                      >未绑定</span>
+                    </p>
+                  </div>
+                  <div
+                    v-if="isBound(item.id)"
+                    class="bound-badge"
+                  >
+                    <el-icon><Check /></el-icon>
+                    已绑定
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-          <template #footer>
-            <el-button @click="showSelectorDialog = false">取消</el-button>
-            <el-button
-              type="primary"
-              :disabled="!selectedSceneId"
-              :loading="binding"
-              @click="confirmBindExisting"
-            >
-              确认绑定
-            </el-button>
-          </template>
-        </el-tab-pane>
-
+            <template #footer>
+              <el-button @click="showSelectorDialog = false">
+                取消
+              </el-button>
+              <el-button
+                type="primary"
+                :disabled="!selectedSceneId"
+                :loading="binding"
+                @click="confirmBindExisting"
+              >
+                确认绑定
+              </el-button>
+            </template>
+          </el-tab-pane>
         </el-tabs>
       </div>
     </el-dialog>

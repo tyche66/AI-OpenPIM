@@ -1,4 +1,4 @@
-import datetime
+import datetime as dt_module
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -125,7 +125,7 @@ async def _fetch_presigned_urls(
 
     client = get_minio_client()
     bucket = ensure_bucket(client)
-    expires = datetime.timedelta(seconds=expire_seconds)
+    expires = dt_module.timedelta(seconds=expire_seconds)
 
     url_map: dict[UUID, str] = {}
     for att_id, oss_key in rows:

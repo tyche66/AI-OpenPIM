@@ -31,12 +31,12 @@ async def create_share(
     try:
         creator_id = UUID(current_user["sub"])
     except (KeyError, ValueError):
-        raise HTTPException(status_code=401, detail={"code": 40103, "msg": "当前用户身份无效"})
+        raise HTTPException(status_code=401, detail={"code": 40103, "msg": "当前用户身份无效"}) from None
 
     try:
         target_id = UUID(share_data["target_id"])
     except (KeyError, ValueError):
-        raise HTTPException(status_code=400, detail={"code": 40001, "msg": "target_id 无效"})
+        raise HTTPException(status_code=400, detail={"code": 40001, "msg": "target_id 无效"}) from None
 
     share_type = share_data.get("share_type") or "proposal"
     share = Share(

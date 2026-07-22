@@ -3,11 +3,19 @@
     <!-- Header -->
     <div class="ml-header">
       <div>
-        <h2 class="ml-title">媒体库</h2>
-        <p class="ml-subtitle">管理系统中的图片、PDF 和文件资源</p>
+        <h2 class="ml-title">
+          媒体库
+        </h2>
+        <p class="ml-subtitle">
+          管理系统中的图片、PDF 和文件资源
+        </p>
       </div>
       <div class="header-actions">
-        <el-button type="primary" :icon="Upload" @click="showUpload = true">
+        <el-button
+          type="primary"
+          :icon="Upload"
+          @click="showUpload = true"
+        >
           上传文件
         </el-button>
       </div>
@@ -35,26 +43,75 @@
           :prefix-icon="Search"
           class="ml-search"
         />
-        <el-select v-model="typeFilter" placeholder="文件类型" clearable class="ml-filter">
-          <el-option label="全部类型" value="" />
-          <el-option label="图片" value="image" />
-          <el-option label="PDF" value="pdf" />
-          <el-option label="其他" value="other" />
+        <el-select
+          v-model="typeFilter"
+          placeholder="文件类型"
+          clearable
+          class="ml-filter"
+        >
+          <el-option
+            label="全部类型"
+            value=""
+          />
+          <el-option
+            label="图片"
+            value="image"
+          />
+          <el-option
+            label="PDF"
+            value="pdf"
+          />
+          <el-option
+            label="其他"
+            value="other"
+          />
         </el-select>
-        <el-select v-model="refFilter" placeholder="引用状态" clearable class="ml-filter">
-          <el-option label="全部" value="" />
-          <el-option label="已引用" value="referenced" />
-          <el-option label="未引用" value="unreferenced" />
+        <el-select
+          v-model="refFilter"
+          placeholder="引用状态"
+          clearable
+          class="ml-filter"
+        >
+          <el-option
+            label="全部"
+            value=""
+          />
+          <el-option
+            label="已引用"
+            value="referenced"
+          />
+          <el-option
+            label="未引用"
+            value="unreferenced"
+          />
         </el-select>
       </div>
       <div class="toolbar-right">
-        <el-select v-model="sortBy" class="ml-filter ml-sort">
-          <el-option label="最新上传" value="newest" />
-          <el-option label="文件名 A-Z" value="nameAsc" />
-          <el-option label="文件名 Z-A" value="nameDesc" />
-          <el-option label="文件大小" value="size" />
+        <el-select
+          v-model="sortBy"
+          class="ml-filter ml-sort"
+        >
+          <el-option
+            label="最新上传"
+            value="newest"
+          />
+          <el-option
+            label="文件名 A-Z"
+            value="nameAsc"
+          />
+          <el-option
+            label="文件名 Z-A"
+            value="nameDesc"
+          />
+          <el-option
+            label="文件大小"
+            value="size"
+          />
         </el-select>
-        <el-radio-group v-model="viewMode" size="small">
+        <el-radio-group
+          v-model="viewMode"
+          size="small"
+        >
           <el-radio-button value="grid">
             <el-icon><Grid /></el-icon>
           </el-radio-button>
@@ -66,7 +123,11 @@
     </div>
 
     <!-- Gallery Grid -->
-    <div v-if="viewMode === 'grid'" class="ml-gallery" v-loading="loading">
+    <div
+      v-if="viewMode === 'grid'"
+      v-loading="loading"
+      class="ml-gallery"
+    >
       <div
         v-for="item in filteredItems"
         :key="item.id"
@@ -81,29 +142,53 @@
             :alt="item.name"
             loading="lazy"
             class="gallery-image"
-          />
-          <div v-else class="pdf-card">
-            <el-icon :size="40" color="#e74c3c"><Document /></el-icon>
+          >
+          <div
+            v-else
+            class="pdf-card"
+          >
+            <el-icon
+              :size="40"
+              color="#e74c3c"
+            >
+              <Document />
+            </el-icon>
             <span class="pdf-label">PDF</span>
           </div>
           <div class="gallery-overlay">
             <div class="overlay-actions">
-              <el-button circle size="small" @click.stop="openPreview(item)" title="预览">
+              <el-button
+                circle
+                size="small"
+                title="预览"
+                @click.stop="openPreview(item)"
+              >
                 <el-icon><ZoomIn /></el-icon>
-              </el-button>
-              <el-button circle size="small" @click.stop="openDetail(item)" title="详情">
-                <el-icon><InfoFilled /></el-icon>
-              </el-button>
-              <el-button circle size="small" @click.stop="handleReplace(item)" title="替换" v-if="hasPermission(['media:edit', 'media:replace'])">
-                <el-icon><Refresh /></el-icon>
               </el-button>
               <el-button
                 circle
                 size="small"
-                type="danger"
-                @click.stop="handleDelete(item)"
-                title="删除"
+                title="详情"
+                @click.stop="openDetail(item)"
+              >
+                <el-icon><InfoFilled /></el-icon>
+              </el-button>
+              <el-button
+                v-if="hasPermission(['media:edit', 'media:replace'])"
+                circle
+                size="small"
+                title="替换"
+                @click.stop="handleReplace(item)"
+              >
+                <el-icon><Refresh /></el-icon>
+              </el-button>
+              <el-button
                 v-if="hasPermission(['media:delete'])"
+                circle
+                size="small"
+                type="danger"
+                title="删除"
+                @click.stop="handleDelete(item)"
               >
                 <el-icon><Delete /></el-icon>
               </el-button>
@@ -111,9 +196,18 @@
           </div>
         </div>
         <div class="gallery-info">
-          <p class="gallery-name" :title="item.name">{{ item.name }}</p>
+          <p
+            class="gallery-name"
+            :title="item.name"
+          >
+            {{ item.name }}
+          </p>
           <div class="gallery-meta">
-            <el-tag :type="item.type === 'image' ? 'success' : item.type === 'pdf' ? 'warning' : 'info'" size="small" round>
+            <el-tag
+              :type="item.type === 'image' ? 'success' : item.type === 'pdf' ? 'warning' : 'info'"
+              size="small"
+              round
+            >
               {{ typeLabel(item.type) }}
             </el-tag>
             <span class="gallery-size">{{ formatSize(item.size) }}</span>
@@ -131,55 +225,150 @@
           </div>
         </div>
       </div>
-      <div v-if="filteredItems.length === 0 && !loading" class="gallery-empty">
+      <div
+        v-if="filteredItems.length === 0 && !loading"
+        class="gallery-empty"
+      >
         <el-empty description="媒体库为空">
-          <el-button type="primary" @click="showUpload = true">上传文件</el-button>
+          <el-button
+            type="primary"
+            @click="showUpload = true"
+          >
+            上传文件
+          </el-button>
         </el-empty>
       </div>
     </div>
 
     <!-- List View -->
-    <div v-else class="ml-list" v-loading="loading">
-      <el-table :data="filteredItems" stripe style="width: 100%" @row-dblclick="openPreview">
-        <el-table-column label="预览" width="80" align="center">
+    <div
+      v-else
+      v-loading="loading"
+      class="ml-list"
+    >
+      <el-table
+        :data="filteredItems"
+        stripe
+        style="width: 100%"
+        @row-dblclick="openPreview"
+      >
+        <el-table-column
+          label="预览"
+          width="80"
+          align="center"
+        >
           <template #default="{ row }">
-            <div class="list-thumb" :class="{ 'checkerboard': row.type === 'image' }">
-              <img v-if="row.type === 'image'" :src="row.thumbnailUrl || row.url" />
-              <el-icon v-else :size="28" color="#e74c3c"><Document /></el-icon>
+            <div
+              class="list-thumb"
+              :class="{ 'checkerboard': row.type === 'image' }"
+            >
+              <img
+                v-if="row.type === 'image'"
+                :src="row.thumbnailUrl || row.url"
+              >
+              <el-icon
+                v-else
+                :size="28"
+                color="#e74c3c"
+              >
+                <Document />
+              </el-icon>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="文件名" min-width="200">
+        <el-table-column
+          label="文件名"
+          min-width="200"
+        >
           <template #default="{ row }">
-            <span class="list-name" :title="row.name">{{ row.name }}</span>
+            <span
+              class="list-name"
+              :title="row.name"
+            >{{ row.name }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="类型" width="100">
+        <el-table-column
+          label="类型"
+          width="100"
+        >
           <template #default="{ row }">
-            <el-tag :type="row.type === 'image' ? 'success' : row.type === 'pdf' ? 'warning' : 'info'" size="small" round>
+            <el-tag
+              :type="row.type === 'image' ? 'success' : row.type === 'pdf' ? 'warning' : 'info'"
+              size="small"
+              round
+            >
               {{ typeLabel(row.type) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="大小" width="100">
-          <template #default="{ row }">{{ formatSize(row.size) }}</template>
-        </el-table-column>
-        <el-table-column label="上传时间" width="120">
-          <template #default="{ row }">{{ formatDate(row.uploadedAt) }}</template>
-        </el-table-column>
-        <el-table-column label="引用状态" width="120">
+        <el-table-column
+          label="大小"
+          width="100"
+        >
           <template #default="{ row }">
-            <el-tag :type="row.refCount > 0 ? 'warning' : 'info'" size="small" effect="plain" round>
+            {{ formatSize(row.size) }}
+          </template>
+        </el-table-column>
+        <el-table-column
+          label="上传时间"
+          width="120"
+        >
+          <template #default="{ row }">
+            {{ formatDate(row.uploadedAt) }}
+          </template>
+        </el-table-column>
+        <el-table-column
+          label="引用状态"
+          width="120"
+        >
+          <template #default="{ row }">
+            <el-tag
+              :type="row.refCount > 0 ? 'warning' : 'info'"
+              size="small"
+              effect="plain"
+              round
+            >
               {{ row.refCount > 0 ? `已引用 (${row.refCount})` : '未引用' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" align="center">
+        <el-table-column
+          label="操作"
+          width="180"
+          align="center"
+        >
           <template #default="{ row }">
-            <el-button text size="small" @click="openPreview(row)">预览</el-button>
-            <el-button text size="small" @click="openDetail(row)">详情</el-button>
-            <el-button text size="small" @click="handleReplace(row)" v-if="hasPermission(['media:edit', 'media:replace'])">替换</el-button>
-            <el-button text size="small" type="danger" @click="handleDelete(row)" v-if="hasPermission(['media:delete'])">删除</el-button>
+            <el-button
+              text
+              size="small"
+              @click="openPreview(row)"
+            >
+              预览
+            </el-button>
+            <el-button
+              text
+              size="small"
+              @click="openDetail(row)"
+            >
+              详情
+            </el-button>
+            <el-button
+              v-if="hasPermission(['media:edit', 'media:replace'])"
+              text
+              size="small"
+              @click="handleReplace(row)"
+            >
+              替换
+            </el-button>
+            <el-button
+              v-if="hasPermission(['media:delete'])"
+              text
+              size="small"
+              type="danger"
+              @click="handleDelete(row)"
+            >
+              删除
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -196,34 +385,68 @@
       destroy-on-close
       class="detail-drawer"
     >
-      <div v-if="detailItem" class="detail-body">
+      <div
+        v-if="detailItem"
+        class="detail-body"
+      >
         <!-- Preview Area -->
-        <div class="detail-preview" :class="{ 'checkerboard': detailItem.type === 'image' }">
+        <div
+          class="detail-preview"
+          :class="{ 'checkerboard': detailItem.type === 'image' }"
+        >
           <img
             v-if="detailItem.type === 'image'"
             :src="detailItem.url"
             :alt="detailItem.name"
             class="detail-image"
-          />
-          <div v-else class="detail-pdf-preview">
-            <el-icon :size="64" color="#e74c3c"><Document /></el-icon>
+          >
+          <div
+            v-else
+            class="detail-pdf-preview"
+          >
+            <el-icon
+              :size="64"
+              color="#e74c3c"
+            >
+              <Document />
+            </el-icon>
             <p>{{ detailItem.name }}</p>
-            <el-button type="primary" @click="openPdfUrl(detailItem.url)">
+            <el-button
+              type="primary"
+              @click="openPdfUrl(detailItem.url)"
+            >
               打开 PDF
-              <el-icon class="ml-1"><TopRight /></el-icon>
+              <el-icon class="ml-1">
+                <TopRight />
+              </el-icon>
             </el-button>
           </div>
         </div>
 
         <!-- File Info -->
         <div class="detail-section">
-          <h4 class="section-title">文件信息</h4>
-          <el-descriptions :column="1" size="small">
-            <el-descriptions-item label="文件名">{{ detailItem.name }}</el-descriptions-item>
-            <el-descriptions-item label="类型">{{ typeLabel(detailItem.type) }} ({{ detailItem.mimeType }})</el-descriptions-item>
-            <el-descriptions-item label="大小">{{ formatSize(detailItem.size) }}</el-descriptions-item>
-            <el-descriptions-item label="上传时间">{{ detailItem.uploadedAt }}</el-descriptions-item>
-            <el-descriptions-item label="文件 ID">{{ detailItem.id }}</el-descriptions-item>
+          <h4 class="section-title">
+            文件信息
+          </h4>
+          <el-descriptions
+            :column="1"
+            size="small"
+          >
+            <el-descriptions-item label="文件名">
+              {{ detailItem.name }}
+            </el-descriptions-item>
+            <el-descriptions-item label="类型">
+              {{ typeLabel(detailItem.type) }} ({{ detailItem.mimeType }})
+            </el-descriptions-item>
+            <el-descriptions-item label="大小">
+              {{ formatSize(detailItem.size) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="上传时间">
+              {{ detailItem.uploadedAt }}
+            </el-descriptions-item>
+            <el-descriptions-item label="文件 ID">
+              {{ detailItem.id }}
+            </el-descriptions-item>
           </el-descriptions>
         </div>
 
@@ -233,52 +456,96 @@
             <el-icon><Link /></el-icon>
             引用关系 ({{ detailItem.refCount }})
           </h4>
-          <div v-if="detailItem.refCount === 0" class="no-refs">
-            <el-empty description="该文件未被任何资源引用" :image-size="60" />
+          <div
+            v-if="detailItem.refCount === 0"
+            class="no-refs"
+          >
+            <el-empty
+              description="该文件未被任何资源引用"
+              :image-size="60"
+            />
           </div>
           <div v-else>
             <!-- Product Cover Images -->
-            <div v-if="bindings.coverImages.length > 0" class="ref-group">
-              <h5 class="ref-group-title">产品主图引用</h5>
+            <div
+              v-if="bindings.coverImages.length > 0"
+              class="ref-group"
+            >
+              <h5 class="ref-group-title">
+                产品主图引用
+              </h5>
               <div
                 v-for="binding in bindings.coverImages"
                 :key="binding.product_id"
                 class="ref-item"
                 @click="goToProduct(binding.product_id)"
               >
-                <div class="ref-thumb" v-if="binding.cover_image_url">
-                  <img :src="binding.cover_image_url" />
+                <div
+                  v-if="binding.cover_image_url"
+                  class="ref-thumb"
+                >
+                  <img :src="binding.cover_image_url">
                 </div>
                 <div class="ref-info">
-                  <p class="ref-product-no">{{ binding.product_no }}</p>
-                  <p class="ref-product-name">{{ binding.product_name }}</p>
+                  <p class="ref-product-no">
+                    {{ binding.product_no }}
+                  </p>
+                  <p class="ref-product-name">
+                    {{ binding.product_name }}
+                  </p>
                 </div>
-                <el-icon class="ref-arrow"><ArrowRight /></el-icon>
+                <el-icon class="ref-arrow">
+                  <ArrowRight />
+                </el-icon>
               </div>
             </div>
             <!-- Scene Images -->
-            <div v-if="bindings.sceneImages.length > 0" class="ref-group">
-              <h5 class="ref-group-title">场景图引用</h5>
+            <div
+              v-if="bindings.sceneImages.length > 0"
+              class="ref-group"
+            >
+              <h5 class="ref-group-title">
+                场景图引用
+              </h5>
               <div
                 v-for="binding in bindings.sceneImages"
                 :key="binding.scene_id + '_' + binding.product_id"
                 class="ref-item"
                 @click="goToProduct(binding.product_id)"
               >
-                <div class="ref-thumb" v-if="binding.scene_image_url">
-                  <img :src="binding.scene_image_url" />
+                <div
+                  v-if="binding.scene_image_url"
+                  class="ref-thumb"
+                >
+                  <img :src="binding.scene_image_url">
                 </div>
                 <div class="ref-info">
-                  <p class="ref-product-no">{{ binding.product_no }}</p>
-                  <p class="ref-product-name">{{ binding.product_name }}</p>
-                  <p class="ref-scene-name" v-if="binding.scene_name">场景: {{ binding.scene_name }}</p>
+                  <p class="ref-product-no">
+                    {{ binding.product_no }}
+                  </p>
+                  <p class="ref-product-name">
+                    {{ binding.product_name }}
+                  </p>
+                  <p
+                    v-if="binding.scene_name"
+                    class="ref-scene-name"
+                  >
+                    场景: {{ binding.scene_name }}
+                  </p>
                 </div>
-                <el-icon class="ref-arrow"><ArrowRight /></el-icon>
+                <el-icon class="ref-arrow">
+                  <ArrowRight />
+                </el-icon>
               </div>
             </div>
             <!-- Manuals / PDFs -->
-            <div v-if="bindings.manuals.length > 0" class="ref-group">
-              <h5 class="ref-group-title">产品说明书/PDF引用</h5>
+            <div
+              v-if="bindings.manuals.length > 0"
+              class="ref-group"
+            >
+              <h5 class="ref-group-title">
+                产品说明书/PDF引用
+              </h5>
               <div
                 v-for="binding in bindings.manuals"
                 :key="binding.product_id"
@@ -286,13 +553,24 @@
                 @click="goToProduct(binding.product_id)"
               >
                 <div class="ref-thumb">
-                  <el-icon :size="24" color="#e74c3c"><Document /></el-icon>
+                  <el-icon
+                    :size="24"
+                    color="#e74c3c"
+                  >
+                    <Document />
+                  </el-icon>
                 </div>
                 <div class="ref-info">
-                  <p class="ref-product-no">{{ binding.product_no }}</p>
-                  <p class="ref-product-name">{{ binding.product_name }}</p>
+                  <p class="ref-product-no">
+                    {{ binding.product_no }}
+                  </p>
+                  <p class="ref-product-name">
+                    {{ binding.product_name }}
+                  </p>
                 </div>
-                <el-icon class="ref-arrow"><ArrowRight /></el-icon>
+                <el-icon class="ref-arrow">
+                  <ArrowRight />
+                </el-icon>
               </div>
             </div>
           </div>
@@ -331,19 +609,35 @@
       destroy-on-close
       class="preview-dialog"
     >
-      <div class="preview-container" :class="{ 'checkerboard': previewItem?.type === 'image' }">
+      <div
+        class="preview-container"
+        :class="{ 'checkerboard': previewItem?.type === 'image' }"
+      >
         <img
           v-if="previewItem?.type === 'image'"
           :src="previewItem.url"
           :alt="previewItem.name"
           class="preview-full-image"
-        />
-        <div v-else class="preview-pdf-container">
-          <el-icon :size="80" color="#e74c3c"><Document /></el-icon>
+        >
+        <div
+          v-else
+          class="preview-pdf-container"
+        >
+          <el-icon
+            :size="80"
+            color="#e74c3c"
+          >
+            <Document />
+          </el-icon>
           <p>{{ previewItem?.name }}</p>
-          <el-button type="primary" @click="openPdfUrl(previewItem?.url)">
+          <el-button
+            type="primary"
+            @click="openPdfUrl(previewItem?.url)"
+          >
             在新窗口打开 PDF
-            <el-icon class="ml-1"><TopRight /></el-icon>
+            <el-icon class="ml-1">
+              <TopRight />
+            </el-icon>
           </el-button>
         </div>
       </div>
@@ -358,7 +652,10 @@
       lock-scroll
       destroy-on-close
     >
-      <div v-if="replaceTarget" class="replace-body">
+      <div
+        v-if="replaceTarget"
+        class="replace-body"
+      >
         <p class="replace-hint">
           正在替换: <strong>{{ replaceTarget.name }}</strong>
         </p>
@@ -377,10 +674,15 @@
           :limit="1"
           :on-change="onReplaceFile"
         >
-          <el-icon class="upload-icon" :size="32"><UploadFilled /></el-icon>
+          <el-icon
+            class="upload-icon"
+            :size="32"
+          >
+            <UploadFilled />
+          </el-icon>
           <div class="el-upload__text">
             点击选择文件或拖拽到此处
-            <br />
+            <br>
             <span class="upload-hint">仅支持 {{ replaceTarget.type === 'image' ? '图片 (JPG/PNG/WebP)' : 'PDF' }} 文件</span>
           </div>
         </el-upload>

@@ -154,7 +154,7 @@
               </el-select>
             </el-form-item>
             <el-form-item label="供应商">
-                <el-input
+              <el-input
                 v-model="filters.supplier_id"
                 clearable
                 placeholder="供应商ID"
@@ -163,7 +163,7 @@
               />
             </el-form-item>
             <el-form-item label="分类">
-                <el-input
+              <el-input
                 v-model="filters.category_id"
                 clearable
                 placeholder="分类ID"
