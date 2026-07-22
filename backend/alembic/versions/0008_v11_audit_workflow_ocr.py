@@ -40,10 +40,8 @@ def upgrade() -> None:
             sa.text(
                 """
                 INSERT INTO permission (id, perm_code, perm_name, resource, action, type, is_deleted)
-                SELECT :id, :perm_code, :perm_name, :resource, :action, :type, false
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM permission WHERE perm_code = :perm_code AND is_deleted = false
-                )
+                VALUES (:id, :perm_code, :perm_name, :resource, :action, :type, false)
+                ON CONFLICT (perm_code) DO NOTHING
                 """
             ),
             {
@@ -96,15 +94,21 @@ def downgrade() -> None:
     conn.execute(
         sa.text(
             """
-            UPDATE role_permission rp
-            SET is_deleted = true
-            FROM permission p
-            WHERE rp.permission_id = p.id AND p.perm_code = ANY(:perm_codes)
+            DELETE FROM role_permission rp
+            USING role r, permission p
+            WHERE rp.role_id = r.id
+              AND rp.permission_id = p.id
+              AND p.perm_code = ANY(:perm_codes)
             """
         ),
         {"perm_codes": perm_codes},
     )
     conn.execute(
-        sa.text("UPDATE permission SET is_deleted = true WHERE perm_code = ANY(:perm_codes)"),
+        sa.text(
+            """
+            DELETE FROM permission
+            WHERE perm_code = ANY(:perm_codes)
+            """
+        ),
         {"perm_codes": perm_codes},
     )

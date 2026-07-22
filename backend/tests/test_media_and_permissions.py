@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.core.security import create_access_token
 from app.models.audit import Share, ShareToken
@@ -446,7 +447,8 @@ async def test_scene_image_bind_multiple_products(client: AsyncClient, _sessionm
     assert resp.status_code == 200
 
     async with _sessionmaker() as session:
-        si = await session.get(SceneImage, si_id)
+        stmt = select(SceneImage).where(SceneImage.id == si_id).options(selectinload(SceneImage.products))
+        si = (await session.execute(stmt)).scalar_one()
         assert len(si.products) == 2
 
 

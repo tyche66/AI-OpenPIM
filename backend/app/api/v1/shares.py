@@ -49,7 +49,7 @@ async def create_share(
 
     token_str = f"tk_{uuid4().hex[:12]}"
     expire_time = None
-    if share_data.get("expire_hours"):
+    if share_data.get("expire_hours") is not None:
         expire_time = datetime.now(UTC) + timedelta(hours=share_data["expire_hours"])
 
     share_token = ShareToken(
