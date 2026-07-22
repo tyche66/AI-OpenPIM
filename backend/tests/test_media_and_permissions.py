@@ -62,6 +62,7 @@ async def _create_test_product(db: AsyncSession) -> Product:
     )
     db.add(product)
     await db.flush()
+    await db.commit()
     return product
 
 

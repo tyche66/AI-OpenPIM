@@ -23,6 +23,7 @@ from app.api.v1.files import router as files_router
 from app.api.v1.products import router as products_router
 from app.api.v1.proposals import router as proposals_router
 from app.api.v1.quotations import router as quotations_router
+from app.api.v1.scene_images import router as scene_images_router
 from app.api.v1.share_token import router as share_token_router
 from app.api.v1.stats import router as stats_router
 from app.api.v1.users import router as users_router
@@ -40,10 +41,12 @@ EXPECTED_ROUTE_PERMISSIONS = {
     ("POST", "/api/v1/quotations"): "quotation:create",
     ("PUT", "/api/v1/quotations/{quotation_id}"): "quotation:edit",
     ("POST", "/api/v1/quotations/{quotation_id}/confirm"): "quotation:confirm",
-    ("POST", "/api/v1/files/upload"): "file:upload",
-    ("DELETE", "/api/v1/files/{attachment_id}"): "file:delete",
-    ("GET", "/api/v1/files/{attachment_id}/download"): "file:view",
-    ("GET", "/api/v1/files/{attachment_id}/preview"): "file:view",
+    ("GET", "/api/v1/files"): "media:view",
+    ("POST", "/api/v1/files/upload"): "media:upload",
+    ("PUT", "/api/v1/files/{attachment_id}/replace"): "media:replace",
+    ("DELETE", "/api/v1/files/{attachment_id}"): "media:delete",
+    ("GET", "/api/v1/files/{attachment_id}/download"): "media:view",
+    ("GET", "/api/v1/files/{attachment_id}/preview"): "media:view",
     ("GET", "/api/v1/stats/shares"): "stats:view",
     ("GET", "/api/v1/stats/products/hot"): "stats:view",
     ("POST", "/api/v1/products/{product_id}/clone"): "product:clone",
@@ -52,6 +55,15 @@ EXPECTED_ROUTE_PERMISSIONS = {
     ("POST", "/api/v1/users/{user_id}/disable"): "user:disable",
     ("POST", "/api/v1/proposals/{proposal_id}/confirm"): "proposal:confirm",
     ("GET", "/api/v1/audit/operation-logs"): "audit:view",
+    ("GET", "/api/v1/scene-images"): "scene_image:view",
+    ("POST", "/api/v1/scene-images"): "scene_image:create",
+    ("GET", "/api/v1/scene-images/{scene_image_id}"): "scene_image:view",
+    ("PUT", "/api/v1/scene-images/{scene_image_id}"): "scene_image:edit",
+    ("DELETE", "/api/v1/scene-images/{scene_image_id}"): "scene_image:delete",
+    ("POST", "/api/v1/scene-images/{scene_image_id}/bind"): "scene_image:edit",
+    ("POST", "/api/v1/scene-images/{scene_image_id}/unbind"): "scene_image:edit",
+    ("GET", "/api/v1/scene-images/{scene_image_id}/products"): "scene_image:view",
+    ("POST", "/api/v1/scene-images/batch-bind"): "scene_image:edit",
 }
 
 _ROUTER_PREFIX = [
@@ -63,6 +75,7 @@ _ROUTER_PREFIX = [
     (proposals_router, "/api/v1/proposals"),
     (audit_router, "/api/v1/audit"),
     (share_token_router, "/api/v1"),
+    (scene_images_router, "/api/v1/scene-images"),
 ]
 
 
@@ -94,12 +107,19 @@ def _migration_permissions():
     """从 seed migration 和后续权限 migration 加载 PERMISSIONS。"""
     versions_dir = pathlib.Path(__file__).resolve().parent.parent / "alembic" / "versions"
     permissions = []
-    for filename in ("0004_seed_data.py", "0008_v11_audit_workflow_ocr.py"):
+    for filename in (
+        "0004_seed_data.py",
+        "0008_v11_audit_workflow_ocr.py",
+        "0011_add_media_permissions.py",
+    ):
         path = versions_dir / filename
         spec = importlib.util.spec_from_file_location(f"_mig_{filename}", path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        permissions.extend(getattr(mod, "PERMISSIONS", []))
+        perms = getattr(mod, "PERMISSIONS", None)
+        if perms is None:
+            perms = getattr(mod, "NEW_PERMISSIONS", [])
+        permissions.extend(perms)
     return permissions
 
 

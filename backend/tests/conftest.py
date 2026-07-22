@@ -116,6 +116,17 @@ async def _sessionmaker(_engine):
 
 
 @pytest.fixture
+async def db(_sessionmaker):
+    """Per-test async DB session.
+
+    Provides a fresh ``AsyncSession`` for tests that need direct database
+    access.  The caller is responsible for committing/rolling back.
+    """
+    async with _sessionmaker() as session:
+        yield session
+
+
+@pytest.fixture
 def integration_setup_db(_test_db_url):
     """Per-test isolated Postgres: reset schema + seed, drop after.
 

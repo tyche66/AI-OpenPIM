@@ -178,7 +178,7 @@ async def test_product_detail_omits_unbound_scene_images(client, _sessionmaker):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200, resp.text
-    assert len(resp.json()["data"]["scene_images"]) == 1
+    assert len(resp.json()["scene_images"]) == 1
 
     # 解绑
     resp = await client.delete(
@@ -193,7 +193,7 @@ async def test_product_detail_omits_unbound_scene_images(client, _sessionmaker):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200, resp.text
-    assert len(resp.json()["data"]["scene_images"]) == 0
+    assert len(resp.json()["scene_images"]) == 0
 
 
 async def test_deleted_scene_image_omitted_from_product_detail(client, _sessionmaker):
@@ -235,7 +235,7 @@ async def test_deleted_scene_image_omitted_from_product_detail(client, _sessionm
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
-    assert len(resp.json()["data"]["scene_images"]) == 1
+    assert len(resp.json()["scene_images"]) == 1
 
     # 删除场景图本身
     resp = await client.delete(
@@ -250,7 +250,7 @@ async def test_deleted_scene_image_omitted_from_product_detail(client, _sessionm
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200, resp.text
-    assert len(resp.json()["data"]["scene_images"]) == 0
+    assert len(resp.json()["scene_images"]) == 0
 
 
 async def test_different_product_different_sort(client, _sessionmaker):
@@ -298,7 +298,7 @@ async def test_different_product_different_sort(client, _sessionmaker):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
-    scenes = resp.json()["data"]["scene_images"]
+    scenes = resp.json()["scene_images"]
     assert len(scenes) == 1
     assert scenes[0]["sort"] == 5
 
@@ -308,7 +308,7 @@ async def test_different_product_different_sort(client, _sessionmaker):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
-    scenes = resp.json()["data"]["scene_images"]
+    scenes = resp.json()["scene_images"]
     assert len(scenes) == 1
     assert scenes[0]["sort"] == 9
 
@@ -469,7 +469,7 @@ async def test_scene_image_reorder_uses_association_sort(client, _sessionmaker):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
-    scenes = resp.json()["data"]["scene_images"]
+    scenes = resp.json()["scene_images"]
     scenes_sorted = sorted(scenes, key=lambda s: s["sort"])
     assert scenes_sorted[0]["id"] == str(sid2)  # sort 5
     assert scenes_sorted[1]["id"] == str(sid1)  # sort 10

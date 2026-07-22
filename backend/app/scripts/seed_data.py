@@ -91,6 +91,14 @@ PERMISSIONS = [
     ("stats:view", "统计查看", "stats", "view", "read"),
     ("audit:view", "审计日志查看", "audit", "view", "read"),
     ("ai:use", "AI 能力使用", "ai", "use", "write"),
+    ("media:view", "媒体库查看", "media", "view", "read"),
+    ("media:upload", "媒体库上传", "media", "upload", "write"),
+    ("media:delete", "媒体库删除", "media", "delete", "write"),
+    ("media:replace", "媒体库替换", "media", "replace", "write"),
+    ("scene_image:view", "场景图查看", "scene_image", "view", "read"),
+    ("scene_image:create", "场景图新增", "scene_image", "create", "write"),
+    ("scene_image:edit", "场景图编辑", "scene_image", "edit", "write"),
+    ("scene_image:delete", "场景图删除", "scene_image", "delete", "write"),
 ]
 
 # 角色 -> 权限映射；"*" 表示全部权限点
