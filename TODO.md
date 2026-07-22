@@ -1,4 +1,4 @@
-# AI-PIM AI-OpenPIM 开发 TODO
+# AI-PIM RiChangPIM 开发 TODO
 
 ## 当前状态
 
@@ -18,6 +18,10 @@
 - [x] M3 数据质量: 新增 app/services/quality.py + /products/quality-summary / /quality-list / /quality-export 端点；frontend/src/views/Quality.vue 看板；finetuned list_products 支持 completeness_status + quality_flag 过滤；UI/导出始终显示待核价，不裸 99999；不导出 cost_price 与敏感供应商字段。
 - [x] M4 审计页面加固: Logs.vue 增时间范围筛选 / 状态徽章 / 时间本地化 / 加载失败与空状态 / 重置与页码回到第一页；新增 frontend/tests/components/Logs.spec.ts（4 项） + frontend/tests/e2e/audit.spec.ts（3 项：admin 可访问 & body 不进 DOM / sales / viewer 被 RBAC 拦截）；后端 test_audit.py 补敏感模块 redacted 与 5xx rolling counter 单测。
 - [x] M4 性能与并发: 新增 scripts/seed_scale.py（1x = 13 / 10x = 1500 / 100x = 100,000，强制 SEED_DATABASE_URL 含 seed/test/scale/synthetic 标记，永不写生产） quotation confirm 修为真正幂等（重复 confirm 不再写 OperationLog 重复行）。
+- [x] 产品详情稳定性: 修复带产品图片时 Pydantic/ORM 附件字段不匹配导致的 500，显式加载详情序列化关系并补 7 项 PostgreSQL 集成测试。
+- [x] 产品详情错误状态: 前端区分 404/403/401/500/网络错误，服务器与网络错误提供原地重试。
+- [x] 版本可见性: 新增 `/api/v1/version`、`/version` 导航页面、构建元数据注入和前后端一致性判断。
+- [x] 部署凭据与迁移兼容: 开发 Compose 统一读取 PostgreSQL/MinIO 环境变量；修复登录数据库凭据漂移和 0012 长 revision ID。
 - [ ] RC 全量门禁: 当前已本地通过后端 ruff + compileall + pytest 非集成、前端 tsc + eslint + vitest + build + compose 校验；待 RC 阶段执行完整 35-40 项生产回归、迁移升级、恢复演练、secret_scan。
 - [ ] RC 扩展 production_regression: 当前 25 项，需新增 备份状态 / quality 看板 / 审计页面 / migration head / 容量检查 / 非管理员 403 到 35-40 项。
 
@@ -62,4 +66,4 @@
 - [x] 前端 `vue-tsc`、ESLint、Vitest、Vite build 门禁通过。
 - [x] 生产前端产物生成至 `frontend/dist`。
 - [x] 更新 `PROJECT_MANAGEMENT.md` 与 `BUILD_LOG.md`。
-
+- [x] 新增 `docs/v1.2-verification.md`，记录产品详情、版本功能、构建变量、登录故障和迁移兼容修复。

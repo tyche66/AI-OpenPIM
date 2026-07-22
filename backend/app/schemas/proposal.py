@@ -14,6 +14,10 @@ class ProposalItemCreate(ProposalItemBase):
     pass
 
 
+class ProposalItemResponse(ProposalItemBase):
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ProposalBase(BaseModel):
     proposal_name: str
     customer_name: str | None = None
@@ -39,6 +43,6 @@ class ProposalResponse(ProposalBase):
     ai_polish_model: str | None = None
     total_face_value: float
     create_time: datetime
-    items: list[ProposalItemBase] = []
+    items: list[ProposalItemResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

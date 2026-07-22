@@ -5,7 +5,7 @@
 # production regression (which need real services). Used to fast-fail before
 # pushing a release branch and as the authoritative gate during RC.
 #
-# Run from the repo root (AI-OpenPIM/). Requires python (with backend venv
+# Run from the repo root (RiChangPIM/). Requires python (with backend venv
 # or system python with requirements) and node for frontend.
 set -uo pipefail
 

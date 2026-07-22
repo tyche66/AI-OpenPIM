@@ -4,10 +4,10 @@
     python app/scripts/import_sample_taxonomy.py <json_path>
 
 幂等保证:
-    - Supplier「示例家具有限公司」不存在则创建，存在则复用
+    - Supplier「示例」不存在则创建，存在则复用
     - Category 按 (parent_id, category_name) 去重，存在则更新
     - Tag 按 (tag_name, tag_type='series') 去重，存在则跳过
-    - 不导入 meta 中的 source/url 等元数据
+    - 不导入 meta 中的 source/url/account 等元数据
     - 仅输出计数，不泄露任何密钥或连接信息
 """
 
@@ -111,12 +111,12 @@ def validate_and_normalize(raw: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-SUPPLIER_NAME = "示例家具有限公司"
+SUPPLIER_NAME = "示例"
 TAG_TYPE_SERIES = "series"
 
 
 async def _get_or_create_supplier(db: AsyncSession) -> Any:
-    """幂等获取或创建 Supplier「示例家具有限公司」."""
+    """幂等获取或创建 Supplier「示例」."""
     from app.models.product import Supplier
 
     result = await db.execute(select(Supplier).where(Supplier.supplier_name == SUPPLIER_NAME))

@@ -49,7 +49,7 @@ async def ops_status(_user=Depends(PermissionChecker("audit:view"))):
     Outputs aggregate state only. Never echoes credentials or request bodies.
     """
     payload: dict[str, object] = {
-        "app_version": settings.VERSION,
+        "app_version": settings.APP_VERSION or settings.VERSION,
         "started_at": _START_TIME,
         "uptime_seconds": round(time.time() - _START_TIME, 3),
         "ai_adapter": settings.AI_ADAPTER or "none",

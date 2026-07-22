@@ -81,6 +81,8 @@
       v-model="showForm"
       :title="editMode === 'create' ? '新增角色' : editMode === 'edit' ? '编辑角色' : '分配权限'"
       width="600px"
+      append-to-body
+      lock-scroll
       @close="resetForm"
     >
       <el-form

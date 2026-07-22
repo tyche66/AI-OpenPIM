@@ -1,6 +1,6 @@
-# AI-OpenPIM
+# AI-PIM RiChangPIM
 
-AI 驱动的企业级产品信息管理平台（AI-PIM）- 开源社区版
+AI 驱动的企业级产品信息管理平台（AI-PIM）- 日常构建版本
 
 ## 快速开始
 
@@ -48,14 +48,15 @@ docker compose up -d
 
 访问地址: https://localhost（开发自签名证书需要浏览器手动信任）
 
-### V1.1 运维
+### V1.2 运维
 
 - OCR 默认关闭：`OCR_ADAPTER=none`。仅在受控环境改为 `tesseract`，扫描 PDF 才会调用内部 OCR 服务。
 - AI 默认关闭：`AI_ADAPTER=none`。外部 AI Key 只能通过未提交的 `.env` 或秘密管理系统注入。
 - PostgreSQL 备份/恢复：`scripts/db_backup.sh`、`scripts/db_restore.sh`。
 - MinIO 备份/恢复：`scripts/minio_backup.sh`、`scripts/minio_restore.sh`。
 - 本地 TLS：`scripts/generate_dev_tls.sh`；生产必须使用受信任证书或外部 TLS 终止。
-- 当前 migration head：`0009_pilot_product_fields`。
+- 当前 migration head：`0012_product_scene_image_partial_unique`；长 revision ID 兼容说明见
+  `docs/v1.2-verification.md`。
 
 ## 技术栈
 
@@ -68,7 +69,7 @@ docker compose up -d
 ## 项目结构
 
 ```
-AI-OpenPIM/
+RiChangPIM/
 ├── backend/                    # FastAPI 后端
 │   ├── app/
 │   │   ├── api/v1/            # API 路由
@@ -97,6 +98,10 @@ AI-OpenPIM/
 
 启动后访问: http://localhost/docs
 
+- 接口总览：`docs/04-api-overview.md`
+- V1.2 近期变更与验证：`docs/v1.2-verification.md`
+- 后端部署与故障排查：`backend/README.md`
+
 ## MVP 功能范围
 
 - 用户管理、RBAC 基础权限
@@ -106,10 +111,4 @@ AI-OpenPIM/
 
 ## 许可证
 
-MIT License — 详见 [LICENSE](./LICENSE)。
-
-## 法律免责声明
-
-- 仓库中所有产品、品牌、供应商、人物名称均为虚构示例数据，与任何现实公司均无关联；如有雷同，纯属巧合。
-- 本项目所提及的第三方产品/技术/服务名称（包括但不限于 Vue、FastAPI、Element Plus、OpenAI、MinIO、Gotenberg、Tesseract 等）仅作技术说明之用，所有权归各自权利人；本项目与上述权利人无任何关联或背书关系。
-- 本项目不提供 AI API Key、不内置任何商业 AI 服务凭据。AI 能力默认关闭（`AI_ADAPTER=none`），使用者需自行申请并合法使用第三方 AI 服务。
+Proprietary

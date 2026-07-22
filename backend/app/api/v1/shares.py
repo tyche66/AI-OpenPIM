@@ -7,7 +7,7 @@ from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.permission import PermissionChecker
+from app.core.permission import PermissionChecker, get_current_user
 from app.middleware.audit import audit_action
 from app.models.audit import Share, ShareToken
 
@@ -20,11 +20,29 @@ router = APIRouter()
     dependencies=[Depends(PermissionChecker("share:create"))],
 )
 @audit_action("share_create", module="shares", target_id_kwarg="share_id")
-async def create_share(request: Request, share_data: dict, db: AsyncSession = Depends(get_db)):
+async def create_share(
+    request: Request,
+    share_data: dict,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # creator_id 必须从登录态令牌中获取，禁止信任客户端传入，避免空值/伪造导致
+    # 写入失败（Share.creator_id 为 NOT NULL 的 UUID 列）。
+    try:
+        creator_id = UUID(current_user["sub"])
+    except (KeyError, ValueError):
+        raise HTTPException(status_code=401, detail={"code": 40103, "msg": "当前用户身份无效"})
+
+    try:
+        target_id = UUID(share_data["target_id"])
+    except (KeyError, ValueError):
+        raise HTTPException(status_code=400, detail={"code": 40001, "msg": "target_id 无效"})
+
+    share_type = share_data.get("share_type") or "proposal"
     share = Share(
-        share_type=share_data["share_type"],
-        target_id=share_data["target_id"],
-        creator_id=share_data["creator_id"],
+        share_type=share_type,
+        target_id=target_id,
+        creator_id=creator_id,
     )
     db.add(share)
     await db.flush()

@@ -7,18 +7,26 @@
       style="min-height: 200px;"
     />
     <el-card
-      v-else-if="!product"
+      v-else-if="pageState !== 'success'"
       class="glass-card not-found"
     >
       <el-result
-        icon="error"
-        title="产品不存在"
-        sub-title="该产品可能已被删除"
+        :icon="errorResult.icon"
+        :title="errorResult.title"
+        :sub-title="errorResult.subtitle"
       >
         <template #extra>
           <el-button
+            v-if="pageState === 'server-error' || pageState === 'network-error'"
             type="primary"
             class="capsule-btn capsule-btn-primary"
+            @click="fetchProduct"
+          >
+            重试
+          </el-button>
+          <el-button
+            :type="pageState === 'not-found' || pageState === 'forbidden' ? 'primary' : 'default'"
+            class="capsule-btn"
             @click="$router.push('/products')"
           >
             返回产品列表
@@ -238,13 +246,28 @@
         </div>
       </div>
 
+      <ProductImageManager
+        v-if="product"
+        :product-id="route.params.id as string"
+        :images="productImages"
+        @change="onProductImagesChange"
+      />
+      <SceneImageSelector
+        v-if="product"
+        :product-id="route.params.id as string"
+        :images="sceneImages"
+        @change="onSceneImagesChange"
+      />
+
       <!-- Edit Form -->
       <el-dialog
         v-if="editMode"
         v-model="editMode"
-        title="编辑产品"
-        class="glass-dialog"
-        :close-on-click-modal="false"
+         title="编辑产品"
+         class="glass-dialog"
+         append-to-body
+         lock-scroll
+         :close-on-click-modal="false"
         destroy-on-close
       >
         <el-form
@@ -432,6 +455,8 @@
         v-model="showStatusDialog"
         title="修改状态"
         class="glass-dialog dialog-sm"
+        append-to-body
+        lock-scroll
         :close-on-click-modal="false"
       >
         <el-form label-width="80px">
@@ -485,6 +510,11 @@ import { productApi, categoryApi, brandApi, supplierApi, tagApi, manualApi } fro
 import type { ProductManual } from '@/types/manuals'
 import { useAuthStore } from '@/stores/auth'
 import { hasPermission } from '@/types/permissions'
+import ProductImageManager from '@/components/ProductImageManager.vue'
+import type { ProductBindImage } from '@/components/ProductImageManager.vue'
+import SceneImageSelector from '@/components/SceneImageSelector.vue'
+import type { SceneImageItem } from '@/components/SceneImageSelector.vue'
+import { classifyProductDetailError } from '@/utils/productDetailError'
 
 const route = useRoute()
 const router = useRouter()
@@ -504,9 +534,79 @@ const canChangeStatus = computed(() => hasPermission(userPermissions.value, 'pro
 const statusMap: Record<string, string> = { active: '上架', inactive: '下架', draft: '草稿' }
 const stockStatusMap: Record<string, string> = { in_stock: '有货', out_of_stock: '缺货', preorder: '预售', unknown: '未知' }
 
-const loading = ref(false)
+type PageState = 'loading' | 'not-found' | 'forbidden' | 'server-error' | 'network-error' | 'success'
+
+const pageState = ref<PageState>('loading')
+const loading = computed(() => pageState.value === 'loading')
 const product = ref<any>(null)
 const manuals = ref<ProductManual[]>([])
+const errorResult = computed(() => {
+  if (pageState.value === 'forbidden') {
+    return { icon: 'warning', title: '无权限查看该产品', subtitle: '请联系管理员开通产品查看权限' }
+  }
+  if (pageState.value === 'server-error') {
+    return { icon: 'error', title: '产品详情加载失败', subtitle: '服务器暂时不可用，请稍后重试' }
+  }
+  if (pageState.value === 'network-error') {
+    return { icon: 'error', title: '无法连接服务器', subtitle: '请检查后端服务' }
+  }
+  return { icon: 'error', title: '产品不存在', subtitle: '该产品可能已被删除' }
+})
+
+const productImages = computed<ProductBindImage[]>(() => {
+  if (!product.value?.productImages) return []
+  return product.value.productImages.map((img: any, index: number) => ({
+    imageId: img.imageId,
+    attachmentId: img.attachmentId,
+    url: img.url,
+    thumbnailUrl: img.thumbnailUrl,
+    name: img.name,
+    sortOrder: img.sortOrder ?? index,
+    isPrimary: img.isPrimary,
+  }))
+})
+
+const sceneImages = computed<SceneImageItem[]>(() => {
+  if (!product.value?.sceneImages) return []
+  return product.value.sceneImages.map((img: any, index: number) => ({
+    sceneImageId: img.sceneImageId || img.id,
+    attachmentId: img.attachmentId,
+    url: img.url,
+    thumbnailUrl: img.thumbnailUrl,
+    name: img.name,
+    sortOrder: img.sortOrder ?? index,
+  }))
+})
+
+function onProductImagesChange(images: ProductBindImage[]) {
+  if (!product.value) return
+  product.value.primaryImageId = images.find((img) => img.isPrimary)?.imageId || null
+  const primaryImg = images.find((img) => img.isPrimary)
+  product.value.primaryImage = primaryImg
+    ? { id: primaryImg.imageId, url: primaryImg.url, thumbnailUrl: primaryImg.thumbnailUrl, name: primaryImg.name }
+    : null
+  product.value.productImages = images.map((img, i) => ({
+    imageId: img.imageId,
+    attachmentId: img.attachmentId,
+    url: img.url,
+    thumbnailUrl: img.thumbnailUrl,
+    name: img.name,
+    sortOrder: i,
+    isPrimary: img.isPrimary,
+  }))
+}
+
+function onSceneImagesChange(images: SceneImageItem[]) {
+  if (!product.value) return
+  product.value.sceneImages = images.map((img, i) => ({
+    sceneImageId: img.sceneImageId,
+    attachmentId: img.attachmentId,
+    url: img.url,
+    thumbnailUrl: img.thumbnailUrl,
+    name: img.name,
+    sortOrder: i,
+  }))
+}
 const editMode = ref(false)
 const saving = ref(false)
 const productFormRef = ref<FormInstance>()
@@ -541,14 +641,14 @@ const statusForm = reactive({ status: 'draft' })
 const statusSaving = ref(false)
 
 const fetchProduct = async () => {
-  loading.value = true
+  pageState.value = 'loading'
   try {
     const res = await productApi.get(route.params.id as string)
     product.value = normalizeProduct(res.data || res)
-  } catch {
-    product.value = null
-  } finally {
-    loading.value = false
+    pageState.value = 'success'
+  } catch (error) {
+    const errorState = classifyProductDetailError(error)
+    if (errorState !== 'unauthorized') pageState.value = errorState
   }
 }
 
@@ -570,6 +670,33 @@ const normalizeProduct = (item: any) => ({
   tagIds: item.tag_ids || [],
   createTime: item.create_time,
   updateTime: item.update_time,
+  primaryImage: item.cover_image_url
+    ? {
+        id: item.cover_image_id,
+        url: item.cover_image_url,
+        thumbnailUrl: item.cover_image_url,
+        name: item.cover_image_filename,
+      }
+    : null,
+  primaryImageId: item.cover_image_id || null,
+  productImages: (item.images || []).map((img: any) => ({
+    imageId: img.id,
+    attachmentId: img.attachment_id,
+    url: img.file_url,
+    thumbnailUrl: img.file_url,
+    name: img.file_name,
+    sortOrder: img.sort,
+    isPrimary: img.is_cover,
+  })),
+  sceneImages: (item.scene_images || []).map((img: any) => ({
+    id: img.id,
+    sceneImageId: img.id,
+    attachmentId: img.attachment_id,
+    url: img.file_url,
+    thumbnailUrl: img.file_url,
+    name: img.name,
+    sortOrder: img.sort,
+  })),
 })
 
 const normalizeCategory = (item: any): any => ({
@@ -953,6 +1080,8 @@ watch(editMode, (val) => {
 
 .glass-dialog :deep(.el-dialog__body) {
   padding: 24px;
+  max-height: 70vh;
+  overflow-y: auto;
 }
 
 .glass-dialog :deep(.el-dialog__footer) {

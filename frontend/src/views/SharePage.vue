@@ -103,11 +103,29 @@
                 border
                 stripe
                 class="share-table"
+                @row-click="handleRowClick"
               >
                 <el-table-column
-                  prop="product_name"
                   label="商品名称"
-                />
+                >
+                  <template #default="{ row }">
+                    <div class="product-name-cell">
+                      <div class="product-thumb">
+                        <img
+                          v-if="row.cover_image_url && !row._imgError"
+                          :src="row.cover_image_url"
+                          class="thumb-img"
+                          @error="onImgError(row)"
+                        />
+                        <span
+                          v-else
+                          class="thumb-placeholder"
+                        >{{ getPlaceholderText(row.product_name) }}</span>
+                      </div>
+                      <span class="product-name-text">{{ row.product_name }}</span>
+                    </div>
+                  </template>
+                </el-table-column>
                 <el-table-column
                   prop="face_price"
                   label="面价"
@@ -162,11 +180,29 @@
                 border
                 stripe
                 class="share-table"
+                @row-click="handleRowClick"
               >
                 <el-table-column
-                  prop="product_name"
                   label="商品名称"
-                />
+                >
+                  <template #default="{ row }">
+                    <div class="product-name-cell">
+                      <div class="product-thumb">
+                        <img
+                          v-if="row.cover_image_url && !row._imgError"
+                          :src="row.cover_image_url"
+                          class="thumb-img"
+                          @error="onImgError(row)"
+                        />
+                        <span
+                          v-else
+                          class="thumb-placeholder"
+                        >{{ getPlaceholderText(row.product_name) }}</span>
+                      </div>
+                      <span class="product-name-text">{{ row.product_name }}</span>
+                    </div>
+                  </template>
+                </el-table-column>
                 <el-table-column
                   prop="face_price"
                   label="面价"
@@ -204,6 +240,11 @@
           </p>
         </div>
       </div>
+
+      <ProductSceneCarousel
+        v-model="sceneCarouselVisible"
+        :images="currentSceneImages"
+      />
     </el-card>
   </div>
 </template>
@@ -213,6 +254,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { shareApi } from '@/api'
+import ProductSceneCarousel from '@/components/ProductSceneCarousel.vue'
 
 const route = useRoute()
 const token = route.params.token as string
@@ -229,6 +271,29 @@ const shareData = reactive({
   access_count: 0,
 })
 const content = ref<any>(null)
+
+const sceneCarouselVisible = ref(false)
+const currentSceneImages = ref<any[]>([])
+
+const handleRowClick = (row: any) => {
+  if (row.scene_images && row.scene_images.length > 0) {
+    currentSceneImages.value = row.scene_images
+    sceneCarouselVisible.value = true
+  }
+}
+
+const getPlaceholderText = (name: string): string => {
+  if (!name) return '无图'
+  const match = name.match(/^[\u4e00-\u9fff]+/)
+  if (match) {
+    return match[0].slice(0, 2)
+  }
+  return name.slice(0, 4)
+}
+
+const onImgError = (row: any) => {
+  row._imgError = true
+}
 
 const fetchContent = async () => {
   loading.value = true
@@ -489,5 +554,49 @@ onMounted(() => {
   .share-card {
     border-radius: 20px;
   }
+}
+
+.product-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.product-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #f0f2f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thumb-img {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  display: block;
+}
+
+.thumb-placeholder {
+  font-size: 12px;
+  font-weight: 600;
+  color: #999;
+  line-height: 1.2;
+  text-align: center;
+  word-break: keep-all;
+}
+
+.product-name-text {
+  font-size: 14px;
+  color: rgb(30, 50, 90);
+  line-height: 1.4;
+}
+
+.share-table {
+  cursor: pointer;
 }
 </style>

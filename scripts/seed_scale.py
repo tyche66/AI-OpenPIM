@@ -3,7 +3,7 @@
 
 按 docs/v1.2-plan.md §5.6 在一个 *独立的* PG16 数据库中生成可重复的
 1x / 10x / 100x 合成产品数据。所有合成产品都显式标记 ``is_synthetic``
-前缀（产品编号以 ``SYN-`` 开头），避免与试点 13 条示例数据混淆。
+前缀（产品编号以 ``SYN-`` 开头），避免与试点 13 条示例真实数据混淆。
 
 要求:
 - 默认指向 ``TEST_DATABASE_URL`` 或 ``SEED_DATABASE_URL``，不得写入生产 DATABASE_URL

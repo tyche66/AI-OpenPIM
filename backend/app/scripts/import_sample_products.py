@@ -1,4 +1,4 @@
-"""Idempotently import traceable sample pilot products from a reviewed JSON file."""
+"""Idempotently import traceable Sample pilot products from a reviewed JSON file."""
 
 import argparse
 import asyncio

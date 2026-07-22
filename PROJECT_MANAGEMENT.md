@@ -1,8 +1,8 @@
-# AI-OpenPIM 项目管理
+# RiChangPIM 项目管理
 
 ## 项目概览
 
-- **项目名称**: AI-OpenPIM (日常PIM)
+- **项目名称**: RiChangPIM (日常PIM)
 - **项目类型**: AI 驱动的企业级产品信息管理平台
 - **技术栈**: Vue3 + FastAPI + PostgreSQL + Redis + MinIO
 - **构建方式**: Docker Compose 容器化
@@ -180,7 +180,7 @@ docker compose up -d backend
 
 ## 相关链接
 
-- 项目文档: `./docs/`
+- 项目文档: `/home/AI-PIM/docs/`
 - API 文档: http://localhost/docs
 - 前端: http://localhost
 - 后端: http://localhost:8000
@@ -193,3 +193,4 @@ docker compose up -d backend
 | 2026-07-16 | MVP 前端全链路集成与 RC 门禁；因 Docker 不可用判定 NO-GO | 主控 Agent |
 | 2026-07-16 | RC 最终验收复跑；Docker 可用且 backend 镜像构建通过，但 Compose 因 host 5432 端口冲突失败，维持 NO-GO | RC 最终验收 Agent |
 | 2026-07-16 | RC 端口冲突解除后全量复跑；Compose 六服务健康，backend migrate/init_admin/seed_data/uvicorn 顺序通过，frontend/API/login/core/share/PDF/RBAC 全量通过，backend 111 passed / frontend 36 passed，判定 GO。MVP-RC 关闭，进入 V1-AI Pilot。 | 主控 Agent |
+| 2026-07-22 | 修复带图片产品详情 500 和前端错误状态；新增版本接口、版本页面及统一构建元数据；修复 Compose 凭据漂移导致的登录 500 和 Alembic 长 revision 兼容。详见 `docs/v1.2-verification.md`。 | 主控 Agent |

@@ -63,6 +63,18 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 12
+      minio:
+        image: minio/minio
+        env:
+          MINIO_ROOT_USER: minio
+          MINIO_ROOT_PASSWORD: minio12345
+        ports:
+          - 9000:9000
+        options: >-
+          --health-cmd "curl -fs http://localhost:9000/minio/health/live"
+          --health-interval 15s
+          --health-timeout 10s
+          --health-retries 12
     env:
       DATABASE_URL: postgresql://pim:pim_password@localhost:5432/ai_pim
       TEST_DATABASE_URL: postgresql+asyncpg://pim:pim_password@localhost:5432/ai_pim_test
@@ -76,19 +88,6 @@ jobs:
       AI_PIM_TEST_DB_APPROVED: "1"
     steps:
       - uses: actions/checkout@v4
-      - name: Start MinIO (server /data)
-        run: |
-          docker run -d --name minio -p 9000:9000 \
-            -e MINIO_ROOT_USER=minio \
-            -e MINIO_ROOT_PASSWORD=minio12345 \
-            minio/minio server /data
-          for i in $(seq 1 30); do
-            if curl -fs http://localhost:9000/minio/health/live >/dev/null 2>&1; then
-              echo "MinIO healthy"; exit 0
-            fi
-            sleep 2
-          done
-          echo "MinIO failed to start"; docker logs minio; exit 1
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -114,14 +113,11 @@ jobs:
         with:
           name: backend-pytest-results
           path: backend/pytest.xml
-      - name: pip-audit (HIGH/CRITICAL informational)
+      - name: pip-audit (HIGH/CRITICAL fail)
         working-directory: backend
-        # 已评估：当前依赖树主要受 FastAPI 0.109 / python-jose 3.3 / python-multipart 0.0.6 /
-        # pillow 10.2 / pypdf 5.1 锁住，存在已披露但无法在不破坏应用的前提下立即升级的漏洞。
-        # 这一阶段把 pip-audit 设为信息性步骤（不阻断 CI），完整报告仍可在 Actions 日志查看。
-        # 后续做依赖升级时，请把 continue-on-error 移除并复跑 pip-audit --strict。
-        continue-on-error: true
         run: |
+          # Audit the declared requirements, not the resolved environment;
+          # avoids false positives on locally-installed path/dist-info packages.
           pip-audit -r requirements.txt --strict
 
 
@@ -146,13 +142,6 @@ jobs:
           --health-retries 12
     env:
       DATABASE_URL: postgresql://pim:pim_password@localhost:5433/ai_pim_ci_empty
-      REDIS_URL: redis://localhost:6379/0
-      MINIO_ENDPOINT: localhost:9000
-      MINIO_ACCESS_KEY: minio
-      MINIO_SECRET_KEY: minio12345
-      JWT_SECRET: ci-jwt-secret-placeholder-not-for-prod
-      AI_ADAPTER: none
-      OCR_ADAPTER: none
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

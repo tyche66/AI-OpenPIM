@@ -96,15 +96,15 @@ def downgrade() -> None:
     conn.execute(
         sa.text(
             """
-            DELETE FROM role_permission
-            USING permission p
-            WHERE role_permission.permission_id = p.id
-              AND p.perm_code = ANY(:perm_codes)
+            UPDATE role_permission rp
+            SET is_deleted = true
+            FROM permission p
+            WHERE rp.permission_id = p.id AND p.perm_code = ANY(:perm_codes)
             """
         ),
         {"perm_codes": perm_codes},
     )
     conn.execute(
-        sa.text("DELETE FROM permission WHERE perm_code = ANY(:perm_codes)"),
+        sa.text("UPDATE permission SET is_deleted = true WHERE perm_code = ANY(:perm_codes)"),
         {"perm_codes": perm_codes},
     )

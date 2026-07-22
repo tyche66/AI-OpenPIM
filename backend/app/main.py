@@ -23,11 +23,13 @@ from app.api.v1 import (
     share_token,
     shares,
     users,
+    version,
 )
 from app.api.v1.brands import router as brands_router
 from app.api.v1.files import router as files_router
 from app.api.v1.manuals import router as manuals_router
 from app.api.v1.quotations import router as quotations_router
+from app.api.v1.scene_images import router as scene_images_router
 from app.api.v1.stats import router as stats_router
 from app.api.v1.suppliers import router as suppliers_router
 from app.api.v1.tags import router as tags_router
@@ -165,7 +167,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(
     title=settings.APP_NAME,
-    version=settings.VERSION,
+    version=settings.APP_VERSION or settings.VERSION,
     description="AI 产品信息管理平台 (AI-PIM) - Business API",
     lifespan=lifespan,
 )
@@ -199,11 +201,16 @@ app.include_router(quotations_router, prefix="/api/v1/quotations", tags=["quotat
 app.include_router(files_router, prefix="/api/v1/files", tags=["files"])
 app.include_router(manuals_router, prefix="/api/v1/manuals", tags=["manuals"])
 app.include_router(stats_router, prefix="/api/v1/stats", tags=["stats"])
+app.include_router(scene_images_router, prefix="/api/v1/scene-images", tags=["scene_images"])
+app.include_router(version.router, prefix="/api/v1", tags=["version"])
 
 
 @app.get("/")
 async def root():
-    return {"code": 200, "data": {"message": "AI-PIM API", "version": settings.VERSION}}
+    return {
+        "code": 200,
+        "data": {"message": "AI-PIM API", "version": settings.APP_VERSION or settings.VERSION},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +286,7 @@ async def health_ready():
     status = "ready" if healthy else "degraded"
     return {
         "status": status,
-        "app_version": settings.VERSION,
+        "app_version": settings.APP_VERSION or settings.VERSION,
         "ai_adapter": settings.AI_ADAPTER or "none",
         "ocr_adapter": settings.OCR_ADAPTER or "none",
         "started_at": started_at,

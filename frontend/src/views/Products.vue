@@ -196,6 +196,37 @@
           @header-dragend="onHeaderDragEnd"
         >
           <el-table-column
+            label="图片"
+            width="80"
+            align="center"
+          >
+            <template #default="{ row }">
+              <div
+                class="product-thumb"
+                @click="previewProductImage(row)"
+              >
+                <el-image
+                  v-if="row.primaryImage?.thumbnailUrl || row.primaryImage?.url"
+                  :src="row.primaryImage.thumbnailUrl || row.primaryImage.url"
+                  fit="cover"
+                  class="thumb-img"
+                >
+                  <template #error>
+                    <div class="thumb-placeholder">
+                      {{ getPlaceholderText(row.productName) }}
+                    </div>
+                  </template>
+                </el-image>
+                <div
+                  v-else
+                  class="thumb-placeholder"
+                >
+                  {{ getPlaceholderText(row.productName) }}
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column
             prop="productNo"
             label="产品编号"
             :width="autoFit ? colWidths['productNo'] : 120"
@@ -377,6 +408,8 @@
       v-model="showCreateDialog"
       :title="editingProduct ? '编辑产品' : '新增产品'"
       class="glass-dialog"
+      append-to-body
+      lock-scroll
       :close-on-click-modal="false"
       destroy-on-close
     >
@@ -591,6 +624,8 @@
       v-model="statusDialogVisible"
       title="修改状态"
       class="glass-dialog dialog-sm"
+      append-to-body
+      lock-scroll
       :close-on-click-modal="false"
     >
       <el-form label-width="80px">
@@ -631,6 +666,12 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <el-image-viewer
+      v-if="previewUrl"
+      :url-list="[previewUrl]"
+      @close="previewUrl = ''"
+    />
   </div>
 </template>
 
@@ -673,6 +714,25 @@ const autoFit = ref(true)
 const costVisible = ref(false)
 const colWidths = ref<Record<string, number>>({})
 const productTableRef = ref()
+const previewUrl = ref('')
+
+function getPlaceholderText(name: string): string {
+  if (!name) return '无图'
+  const chineseChars = name.match(/[\u4e00-\u9fa5]/g)
+  if (chineseChars && chineseChars.length >= 2) {
+    return chineseChars.slice(0, 2).join('')
+  }
+  const alnum = name.replace(/[^a-zA-Z0-9]/g, '')
+  if (alnum.length >= 4) return alnum.slice(0, 4).toUpperCase()
+  if (alnum.length > 0) return alnum.toUpperCase()
+  return name.slice(0, 2)
+}
+
+function previewProductImage(row: any) {
+  if (row.primaryImage?.url) {
+    previewUrl.value = row.primaryImage.url
+  }
+}
 
 const brands = ref<any[]>([])
 const suppliers = ref<any[]>([])
@@ -761,6 +821,7 @@ const FIT_TEXT = [
 ]
 // 固定列宽（不参与内容测量）
 const FIXED_WIDTHS: Record<string, number> = {
+  image: 80,
   facePrice: 90,
   stockStatus: 90,
   status: 90,
@@ -855,6 +916,14 @@ const normalizeProduct = (item: any) => ({
   tagIds: item.tag_ids || [],
   createTime: item.create_time,
   updateTime: item.update_time,
+  primaryImage: item.cover_image_url
+    ? {
+        id: item.cover_image_id,
+        url: item.cover_image_url,
+        thumbnailUrl: item.cover_image_url,
+        name: item.cover_image_filename,
+      }
+    : null,
 })
 
 const normalizeCategory = (item: any): any => ({
@@ -1298,6 +1367,41 @@ onMounted(() => {
   color: var(--brand-deep);
   font-weight: 600;
   font-family: monospace;
+}
+
+/* ===== Product Thumb ===== */
+.product-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.thumb-img {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+  display: block;
+}
+
+.thumb-img :deep(img) {
+  border-radius: 8px;
+  background: #fff;
+}
+
+.thumb-placeholder {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+  background: var(--brand-lighter);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  user-select: none;
 }
 
 .capsule-tag {

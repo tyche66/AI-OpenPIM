@@ -123,6 +123,10 @@ ROLE_PERMISSIONS = {
         "supplier:delete",
         "file:view",
         "file:upload",
+        "media:view",
+        "media:upload",
+        "media:delete",
+        "media:replace",
         "stats:view",
     ],
     "sales": [
@@ -143,10 +147,16 @@ ROLE_PERMISSIONS = {
         "file:upload",
         "stats:view",
         "ai:use",
+        "scene_image:view",
+        "scene_image:create",
+        "scene_image:edit",
+        "scene_image:delete",
     ],
     "viewer": [
         "product:view",
         "stats:view",
+        "media:view",
+        "scene_image:view",
     ],
 }
 

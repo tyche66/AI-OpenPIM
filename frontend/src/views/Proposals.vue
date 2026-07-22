@@ -163,6 +163,8 @@
       v-model="showCreateDialog"
       title="新增方案"
       class="glass-dialog"
+      append-to-body
+      lock-scroll
       :close-on-click-modal="false"
     >
       <el-form
@@ -215,6 +217,8 @@
       v-model="showShareDialog"
       title="创建分享链接"
       class="glass-dialog"
+      append-to-body
+      lock-scroll
       :close-on-click-modal="false"
     >
       <el-form label-width="120px">
@@ -277,6 +281,8 @@
       v-model="showShareResult"
       title="分享链接已生成"
       class="glass-dialog"
+      append-to-body
+      lock-scroll
       :close-on-click-modal="false"
     >
       <el-alert

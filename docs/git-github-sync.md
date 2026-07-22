@@ -12,7 +12,7 @@
 
 | 时间 | 操作 | 结果 |
 | --- | --- | --- |
-| 2026-07-17 | 在 `/path/to/AI-OpenPIM` 执行 `git init` | 已创建本地 Git 仓库 |
+| 2026-07-17 | 在 `/home/AI-PIM/RiChangPIM` 执行 `git init` | 已创建本地 Git 仓库 |
 | 2026-07-17 | 将默认分支重命名为 `main` | 已完成 |
 | 2026-07-17 | 检查 `.gitignore` | `.env`、`backend/.env`、`venv/`、`node_modules/`、`dist/`、`docker/volumes/`、`logs/`、`backups/` 已忽略 |
 | 2026-07-17 | 补充 `.gitignore` | 增加 `playwright-report/`、`test-results/`、`backend/out.txt`、`backend/err.txt` |

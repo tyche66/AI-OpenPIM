@@ -1,23 +1,25 @@
-# AI-PIM AI-OpenPIM Release Candidate 构建日志
+# AI-PIM RiChangPIM Release Candidate 构建日志
 
 ## 当前发布状态
 
 - V1.1 已发布并 GO：25/25 production regression PASS，详见 `docs/v1.1-verification.md`。
 - 当前阶段：V1.2 内部试点运营加固，详见 `docs/v1.2-plan.md` 与 `RELEASE_GATE.md`。
   V1.2 已落地 M1-M4 工作包，RC 阶段执行全量门禁与扩展生产回归至 35-40 项。
+- 2026-07-22 完成产品详情 500、详情错误状态、版本页/版本接口、统一构建元数据、登录数据库
+  凭据漂移和 Alembic 长 revision 兼容修复，详见 `docs/v1.2-verification.md`。
 - 历史构建版本: MVP-RC-20260716（初次 NO-GO 的根因 host 5432 端口冲突已在 V1.1 阶段解除）。
 
 ## 构建信息
 
-- 最近构建时间: 2026-07-20 09:35 +0800（V1.2 工作包本地验证）
+- 最近构建时间: 2026-07-22（产品详情、版本功能、登录与迁移兼容增量验证）
 - 构建版本: v1.2.0（M1-M4 实施完成；RC 阶段待全量门禁后正式 GO）
-- 构建环境: /path/to/AI-OpenPIM
-- 后端根目录: /path/to/AI-OpenPIM/backend
-- 前端根目录: /path/to/AI-OpenPIM/frontend
-- 构建产物位置: /path/to/AI-OpenPIM/frontend/dist
+- 构建环境: /home/AI-PIM/RiChangPIM
+- 后端根目录: /home/AI-PIM/RiChangPIM/backend
+- 前端根目录: /home/AI-PIM/RiChangPIM/frontend
+- 构建产物位置: /home/AI-PIM/RiChangPIM/frontend/dist
 - 最终结论: 当前进度 V1.2 RC 候选，待 RC 全量门禁通过后判定 GO。
 
-## V1.2 阶段任务完成表（截至 2026-07-20）
+## V1.2 阶段任务完成表（截至 2026-07-22）
 
 | 任务 | 状态 | 说明 |
 | --- | --- | --- |
@@ -28,6 +30,11 @@
 | M3 数据质量 | 完成 | app/services/quality.py + 三端点；Quality.vue 看板；列表支持 completeness_status + quality_flag；导出不泄露 cost_price / 敏感供应商字段；UI/导出始终显示待核价。 |
 | M4 审计页面加固 | 完成 | Logs.vue 时间范围 + 状态徽章 + 空状态/错误状态 + 时间本地化；Logs.spec.ts (4) + audit.spec.ts (3)；test_audit.py 补 redact/5xx 单测。 |
 | M4 性能规模 | 完成 | scripts/seed_scale.py 1x/10x/100x 合成数据生成，强制 SEED_DATABASE_URL 含 seed/test/scale/synthetic 标记；quotation confirm 真正幂等（重复不写重复审计行）。 |
+| 产品详情稳定性 | 完成 | 修复 ProductImage ORM 与附件字段的 Pydantic 序列化不匹配；详情关系显式加载；新增无图/产品图/场景图/说明书/404/非法 UUID/鉴权测试。 |
+| 前端详情错误状态 | 完成 | 区分 loading/not-found/forbidden/server-error/network-error/success；500 与网络错误支持原地重试。 |
+| 版本可见性 | 完成 | 新增 `/api/v1/version`、`/version` 页面、导航高亮、构建指纹和 build ID/commit/version 逐级一致性判断。 |
+| 构建与凭据一致性 | 完成 | Docker/Vite/后端统一构建变量；开发 Compose 读取统一 PostgreSQL/MinIO 环境变量；登录真实路径恢复 200。 |
+| 0012 迁移兼容 | 完成 | 保留已发布长 revision ID，并在写入前扩展 `alembic_version.version_num` 至 VARCHAR(64)，兼容空库和现有库。 |
 | RC 全量门禁 | 待执行 | 待全量 pytest（含集成）+ 浏览器 e2e + Compose 启动 + 恢复演练 + secret_scan + 35-40 项 production_regression。 |
 
 ## 阶段任务完成表（历史 MVP-RC-20260716，已废弃）
@@ -142,11 +149,11 @@
 
 ## Release Candidate 产物位置
 
-- 前端生产产物: `/path/to/AI-OpenPIM/frontend/dist`
-- 后端应用源码: `/path/to/AI-OpenPIM/backend/app`
+- 前端生产产物: `/home/AI-PIM/RiChangPIM/frontend/dist`
+- 后端应用源码: `/home/AI-PIM/RiChangPIM/backend/app`
 - 后端镜像: `richangpim-backend:latest`
-- Compose 配置: `/path/to/AI-OpenPIM/docker-compose.yml`
-- Nginx 配置: `/path/to/AI-OpenPIM/docker/nginx/nginx.conf`
+- Compose 配置: `/home/AI-PIM/RiChangPIM/docker-compose.yml`
+- Nginx 配置: `/home/AI-PIM/RiChangPIM/docker/nginx/nginx.conf`
 
 ## 最终判定
 
@@ -160,7 +167,7 @@ NO-GO。
 
 - 复跑时间: 2026-07-16T18:10:00+08:00
 - 构建版本: MVP-RC-20260716-FINAL
-- 构建环境: /path/to/AI-OpenPIM
+- 构建环境: /home/AI-PIM/RiChangPIM
 - 最终结论: **GO**
 
 ### 生产 Compose 冷启动

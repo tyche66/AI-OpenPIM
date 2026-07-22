@@ -248,6 +248,8 @@
       v-model="showEditDialog"
       title="编辑方案"
       class="glass-dialog"
+      append-to-body
+      lock-scroll
       :close-on-click-modal="false"
     >
       <el-form
