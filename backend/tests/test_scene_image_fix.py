@@ -281,10 +281,10 @@ async def test_different_product_different_sort(client, _sessionmaker):
         await s.flush()
 
         # 绑定到两个产品，不同排序
-        s.execute(product_scene_image.insert().values(
+        await s.execute(product_scene_image.insert().values(
             product_id=p1.id, scene_image_id=si.id, sort=5,
         ))
-        s.execute(product_scene_image.insert().values(
+        await s.execute(product_scene_image.insert().values(
             product_id=p2.id, scene_image_id=si.id, sort=9,
         ))
         await s.commit()
@@ -439,10 +439,10 @@ async def test_scene_image_reorder_uses_association_sort(client, _sessionmaker):
         await s.flush()
 
         # 绑定两个场景图，sort=1 和 sort=2
-        s.execute(product_scene_image.insert().values(
+        await s.execute(product_scene_image.insert().values(
             product_id=product.id, scene_image_id=si1.id, sort=1,
         ))
-        s.execute(product_scene_image.insert().values(
+        await s.execute(product_scene_image.insert().values(
             product_id=product.id, scene_image_id=si2.id, sort=2,
         ))
         await s.commit()

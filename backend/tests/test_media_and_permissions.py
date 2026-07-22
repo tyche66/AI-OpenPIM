@@ -413,7 +413,7 @@ async def test_product_scene_images_exceeds_30_fails(client: AsyncClient, db: As
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
-async def test_scene_image_bind_multiple_products(client: AsyncClient, db: AsyncSession):
+async def test_scene_image_bind_multiple_products(client: AsyncClient, _sessionmaker):
     headers = await _auth_header(client)
     img = await _upload_file(client, headers, _IMAGE_JPEG_CONTENT, "multi.jpg", "image/jpeg")
 
@@ -425,8 +425,9 @@ async def test_scene_image_bind_multiple_products(client: AsyncClient, db: Async
     assert resp.status_code == 201
     si_id = UUID(resp.json()["data"]["id"])
 
-    prod1 = await _create_test_product(db)
-    prod2 = await _create_test_product(db)
+    async with _sessionmaker() as session:
+        prod1 = await _create_test_product(session)
+        prod2 = await _create_test_product(session)
 
     resp = await client.post(
         f"/api/v1/scene-images/{si_id}/bind",
@@ -435,8 +436,9 @@ async def test_scene_image_bind_multiple_products(client: AsyncClient, db: Async
     )
     assert resp.status_code == 200
 
-    si = await db.get(SceneImage, si_id)
-    assert len(si.products) == 2
+    async with _sessionmaker() as session:
+        si = await session.get(SceneImage, si_id)
+        assert len(si.products) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -490,7 +492,11 @@ async def test_share_api_returns_cover_image_url(client: AsyncClient, db: AsyncS
     await db.commit()
 
     from app.models.sales import Proposal, ProposalItem
-    proposal = Proposal(proposal_name="Test Share Cover", creator_id=(await _get_admin_user_id(db)))
+    proposal = Proposal(
+        proposal_name="Test Share Cover",
+        proposal_no=f"PR-{uuid4().hex[:8].upper()}",
+        creator_id=(await _get_admin_user_id(db)),
+    )
     db.add(proposal)
     await db.flush()
     pi_item = ProposalItem(proposal_id=proposal.id, product_id=product.id)
@@ -529,7 +535,11 @@ async def test_share_api_returns_scene_images(client: AsyncClient, db: AsyncSess
     )
 
     from app.models.sales import Proposal, ProposalItem
-    proposal = Proposal(proposal_name="Test Share SI", creator_id=(await _get_admin_user_id(db)))
+    proposal = Proposal(
+        proposal_name="Test Share SI",
+        proposal_no=f"PR-{uuid4().hex[:8].upper()}",
+        creator_id=(await _get_admin_user_id(db)),
+    )
     db.add(proposal)
     await db.flush()
     pi_item = ProposalItem(proposal_id=proposal.id, product_id=product.id)
@@ -556,7 +566,11 @@ async def test_share_token_expired_cannot_access(client: AsyncClient, db: AsyncS
     product = await _create_test_product(db)
 
     from app.models.sales import Proposal, ProposalItem
-    proposal = Proposal(proposal_name="Expired Share", creator_id=(await _get_admin_user_id(db)))
+    proposal = Proposal(
+        proposal_name="Expired Share",
+        proposal_no=f"PR-{uuid4().hex[:8].upper()}",
+        creator_id=(await _get_admin_user_id(db)),
+    )
     db.add(proposal)
     await db.flush()
     pi_item = ProposalItem(proposal_id=proposal.id, product_id=product.id)

@@ -127,7 +127,7 @@ def downgrade() -> None:
         op.get_bind().execute(
             text("""
                 DELETE FROM permission
-                WHERE perm_code = :perm_code AND is_deleted = false
+                WHERE perm_code = :perm_code
             """),
             {"perm_code": perm_code},
         )
