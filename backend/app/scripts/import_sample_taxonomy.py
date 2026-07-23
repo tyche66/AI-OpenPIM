@@ -1,10 +1,10 @@
-"""圣奥 taxonomy 导入脚本.
+"""sample taxonomy 导入脚本.
 
 用法:
     python app/scripts/import_pilot_taxonomy.py <json_path>
 
 幂等保证:
-    - Supplier「圣奥」不存在则创建，存在则复用
+    - Supplier「示例」不存在则创建，存在则复用
     - Category 按 (parent_id, category_name) 去重，存在则更新
     - Tag 按 (tag_name, tag_type='series') 去重，存在则跳过
     - 不导入 meta 中的 source/url/account 等元数据
@@ -111,12 +111,12 @@ def validate_and_normalize(raw: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-SUPPLIER_NAME = "圣奥"
+SUPPLIER_NAME = "SampleCorp"
 TAG_TYPE_SERIES = "series"
 
 
 async def _get_or_create_supplier(db: AsyncSession) -> Any:
-    """幂等获取或创建 Supplier「圣奥」."""
+    """幂等获取或创建 Supplier「示例」."""
     from app.models.product import Supplier
 
     result = await db.execute(select(Supplier).where(Supplier.supplier_name == SUPPLIER_NAME))
@@ -289,7 +289,7 @@ async def _async_main(json_path: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="导入圣奥 taxonomy（品类 + 系列）到 PIM")
+    parser = argparse.ArgumentParser(description="导入sample taxonomy（品类 + 系列）到 PIM")
     parser.add_argument("json_path", help="classification JSON 文件路径")
     args = parser.parse_args()
 
