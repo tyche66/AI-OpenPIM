@@ -1,6 +1,6 @@
-# AI-PIM 后端部署与运维
+# AI-openPIM 后端部署与运维
 
-FastAPI 后端（AI-PIM / RiChangPIM）。本文档聚焦「装后」必备步骤：数据库迁移、初始管理员、RBAC 种子数据。
+FastAPI 后端（AI-openPIM / openPIM）。本文档聚焦「装后」必备步骤：数据库迁移、初始管理员、RBAC 种子数据。
 
 ## 1. 安装依赖
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI-PIM PostgreSQL 恢复（pg_restore，配合 db_backup.sh 的 .sqlc 归档）。
+# AI-openPIM PostgreSQL 恢复（pg_restore，配合 db_backup.sh 的 .sqlc 归档）。
 # 用法：
 #   POSTGRES_HOST=localhost ./scripts/db_restore.sh backups/ai_pim_20260101_120000.sqlc
 # 注意：会先 --clean 清掉目标库内对象，请确认备份文件正确！

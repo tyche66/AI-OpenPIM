@@ -1,7 +1,7 @@
 """add_scene_image
 
 Revision ID: 0010_add_scene_image
-Revises: 0009_pilot_product_fields
+Revises: 0009_pilot_pilot_product_fields
 Create Date: 2026-07-21
 """
 
@@ -11,7 +11,7 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 revision: str = "0010_add_scene_image"
-down_revision: str | None = "0009_pilot_product_fields"
+down_revision: str | None = "0009_pilot_pilot_product_fields"
 branch_labels: str | tuple[str, ...] | None = None
 depends_on: str | tuple[str, ...] | None = None
 

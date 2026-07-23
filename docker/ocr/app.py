@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pypdf import PdfReader
 
-app = FastAPI(title="AI-PIM Local OCR")
+app = FastAPI(title="AI-openPIM Local OCR")
 
 MAX_FILE_SIZE = 50 * 1024 * 1024
 MAX_PAGES = 50

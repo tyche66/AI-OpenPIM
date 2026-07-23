@@ -1,4 +1,4 @@
-# AI-PIM RiChangPIM Release Candidate 构建日志
+# AI-openPIM openPIM Release Candidate 构建日志
 
 ## 当前发布状态
 
@@ -13,10 +13,10 @@
 
 - 最近构建时间: 2026-07-22（产品详情、版本功能、登录与迁移兼容增量验证）
 - 构建版本: v1.2.0（M1-M4 实施完成；RC 阶段待全量门禁后正式 GO）
-- 构建环境: /home/AI-PIM/RiChangPIM
-- 后端根目录: /home/AI-PIM/RiChangPIM/backend
-- 前端根目录: /home/AI-PIM/RiChangPIM/frontend
-- 构建产物位置: /home/AI-PIM/RiChangPIM/frontend/dist
+- 构建环境: /home/AI-openPIM/openPIM
+- 后端根目录: /home/AI-openPIM/openPIM/backend
+- 前端根目录: /home/AI-openPIM/openPIM/frontend
+- 构建产物位置: /home/AI-openPIM/openPIM/frontend/dist
 - 最终结论: 当前进度 V1.2 RC 候选，待 RC 全量门禁通过后判定 GO。
 
 ## V1.2 阶段任务完成表（截至 2026-07-22）
@@ -112,14 +112,14 @@
 | --- | --- |
 | frontend production build | PASS，`frontend/dist/index.html` 与 assets 已生成。 |
 | `docker compose -f docker-compose.yml config --quiet` | PASS；仅提示 `version` 字段 obsolete warning。 |
-| `docker compose build backend` | PASS；生成/更新 `richangpim-backend:latest`。 |
+| `docker compose build backend` | PASS；生成/更新 `openpim-backend:latest`。 |
 | `docker compose up -d postgres redis minio gotenberg backend nginx` | FAIL；PostgreSQL 绑定 host `0.0.0.0:5432` 失败，原因是本机进程 `postgres` 已监听 `127.0.0.1:5432`。 |
-| PostgreSQL healthy | FAIL；`richangpim-postgres-1` 状态为 `created`，未运行。 |
-| Redis healthy | PASS；`richangpim-redis-1` 状态为 `running healthy`。 |
-| MinIO running | PASS；`richangpim-minio-1` 状态为 `running healthy`。 |
-| Gotenberg running | PASS；`richangpim-gotenberg-1` 状态为 `running`，未配置 healthcheck。 |
-| backend healthy | FAIL；`richangpim-backend-1` 状态为 `created`，未运行。 |
-| nginx running | PASS；`richangpim-nginx-1` 状态为 `running`。 |
+| PostgreSQL healthy | FAIL；`openpim-postgres-1` 状态为 `created`，未运行。 |
+| Redis healthy | PASS；`openpim-redis-1` 状态为 `running healthy`。 |
+| MinIO running | PASS；`openpim-minio-1` 状态为 `running healthy`。 |
+| Gotenberg running | PASS；`openpim-gotenberg-1` 状态为 `running`，未配置 healthcheck。 |
+| backend healthy | FAIL；`openpim-backend-1` 状态为 `created`，未运行。 |
+| nginx running | PASS；`openpim-nginx-1` 状态为 `running`。 |
 | `http://localhost/api/v1/health` | FAIL；curl 10s timeout，backend 未启动导致 `/api` 代理无响应。 |
 | frontend dist 通过 nginx 访问 | PASS；`curl -I http://localhost/` 返回 200，`http://localhost/share/test-token` 返回 200 SPA 入口。 |
 | `/api` 代理正常 | FAIL；`/api/v1/health` 与 `/api/v1/auth/login` 均 10s timeout。 |
@@ -133,7 +133,7 @@
 
 ### P0
 
-- 生产 Compose 启动失败：本机 PostgreSQL 进程占用 host `5432`，导致 `richangpim-postgres-1` 无法绑定端口，backend 依赖 postgres healthy 未启动。按强制门禁，compose 或 nginx 生产 API 访问失败必须 NO-GO。
+- 生产 Compose 启动失败：本机 PostgreSQL 进程占用 host `5432`，导致 `openpim-postgres-1` 无法绑定端口，backend 依赖 postgres healthy 未启动。按强制门禁，compose 或 nginx 生产 API 访问失败必须 NO-GO。
 
 ### P1
 
@@ -149,11 +149,11 @@
 
 ## Release Candidate 产物位置
 
-- 前端生产产物: `/home/AI-PIM/RiChangPIM/frontend/dist`
-- 后端应用源码: `/home/AI-PIM/RiChangPIM/backend/app`
-- 后端镜像: `richangpim-backend:latest`
-- Compose 配置: `/home/AI-PIM/RiChangPIM/docker-compose.yml`
-- Nginx 配置: `/home/AI-PIM/RiChangPIM/docker/nginx/nginx.conf`
+- 前端生产产物: `/home/AI-openPIM/openPIM/frontend/dist`
+- 后端应用源码: `/home/AI-openPIM/openPIM/backend/app`
+- 后端镜像: `openpim-backend:latest`
+- Compose 配置: `/home/AI-openPIM/openPIM/docker-compose.yml`
+- Nginx 配置: `/home/AI-openPIM/openPIM/docker/nginx/nginx.conf`
 
 ## 最终判定
 
@@ -167,7 +167,7 @@ NO-GO。
 
 - 复跑时间: 2026-07-16T18:10:00+08:00
 - 构建版本: MVP-RC-20260716-FINAL
-- 构建环境: /home/AI-PIM/RiChangPIM
+- 构建环境: /home/AI-openPIM/openPIM
 - 最终结论: **GO**
 
 ### 生产 Compose 冷启动
@@ -281,7 +281,7 @@ MVP-RC 全部门禁通过：代码、契约、前后端自动化测试（backend
 
 - 受控 OpenAI-compatible mock（临时假 Key，仅 `/tmp`）：chat 200；Embedding 200 且 1536 维；下游 500 映射 502；1 秒 timeout 映射 504。
 - AI disabled：chat 返回 503，不返回伪成功；readiness 为 ready，db/redis/minio=ok，ai=none。
-- 生产恢复后 postgres/redis/minio/gotenberg/backend/nginx 全部 healthy；PG16 使用固定命名卷 `richangpim_go_postgres_pg16_data_20260716`。
+- 生产恢复后 postgres/redis/minio/gotenberg/backend/nginx 全部 healthy；PG16 使用固定命名卷 `openpim_go_postgres_pg16_data_20260716`。
 - 临时 mock 容器、脚本、JWT、响应文件和假 Key 已删除；未停止或读写宿主 PostgreSQL 18 数据目录。
 
 ### 未完成与 NO-GO 原因

@@ -174,9 +174,12 @@ def upgrade() -> None:
                 """
                 INSERT INTO permission (id, perm_code, perm_name, resource,
                                         action, type, create_time, update_time, is_deleted)
-                VALUES (:id, :perm_code, :perm_name, :resource,
-                        :action, :type, now(), now(), false)
-                ON CONFLICT (perm_code) DO NOTHING
+                SELECT :id, :perm_code, :perm_name, :resource,
+                       :action, :type, now(), now(), false
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM permission
+                    WHERE perm_code = :perm_code AND is_deleted = false
+                )
                 """
             ),
             {
@@ -279,7 +282,7 @@ def downgrade() -> None:
         text(
             """
             DELETE FROM permission
-            WHERE perm_code = ANY(:perm_codes)
+            WHERE perm_code = ANY(:perm_codes) AND is_deleted = false
             """
         ),
         {"perm_codes": seeded_perm_codes},

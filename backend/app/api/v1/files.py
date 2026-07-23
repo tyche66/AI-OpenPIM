@@ -15,14 +15,7 @@ from app.core.minio_client import get_minio_client
 from app.core.permission import PermissionChecker
 from app.core.security import create_access_token, decode_access_token
 from app.middleware.audit import audit_action
-from app.models.product import (
-    Attachment,
-    Product,
-    ProductImage,
-    ProductManual,
-    SceneImage,
-    product_scene_image,
-)
+from app.models.product import Attachment, Product, ProductImage, ProductManual, SceneImage, product_scene_image
 from app.schemas.file import FilePresignResponse, FileReferences, FileUploadResponse
 
 router = APIRouter()
@@ -75,7 +68,8 @@ def _content_type_for(attachment: Attachment) -> str:
 
 def _iter_minio_object(obj) -> Iterator[bytes]:
     try:
-        yield from obj.stream(1024 * 1024)
+        for chunk in obj.stream(1024 * 1024):
+            yield chunk
     finally:
         obj.close()
         obj.release_conn()
@@ -113,7 +107,7 @@ async def list_files(
         )
         has_manual = (
             select(1)
-            .where(ProductManual.attachment_id == Attachment.id, ProductManual.is_deleted.is_(False))  # noqa: E501
+            .where(ProductManual.attachment_id == Attachment.id, ProductManual.is_deleted.is_(False))
             .exists()
         )
         has_scene = (
@@ -469,7 +463,7 @@ async def replace_file(
             status_code=422,
             detail={
                 "code": 42204,
-                "msg": f"替换文件类型不匹配：原文件类型为 {attachment.file_type}，新文件类型为 {file_type}",  # noqa: E501
+                "msg": f"替换文件类型不匹配：原文件类型为 {attachment.file_type}，新文件类型为 {file_type}",
             },
         )
 

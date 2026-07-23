@@ -96,8 +96,8 @@ class MediaService {
     }
   }
 
-  async delete(id: string): Promise<void> {
-    await api.delete(`/files/${id}`)
+  async delete(id: string, config?: { suppressErrorMessage?: boolean }): Promise<void> {
+    await api.delete(`/files/${id}`, config)
   }
 
   async get(id: string, withReferences = false): Promise<MediaItem> {

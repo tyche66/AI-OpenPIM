@@ -181,7 +181,62 @@
           >
             新增产品
           </el-button>
+          <el-button
+            v-if="canProposalCreate"
+            type="success"
+            class="capsule-btn"
+            @click="enterProposalMode"
+          >
+            制作方案
+          </el-button>
         </div>
+      </div>
+
+      <div
+        v-if="proposalMode"
+        class="selection-bar"
+      >
+        <span class="selection-count">已选 {{ selectedCount }} 项</span>
+        <div class="selection-actions">
+          <el-button
+            class="capsule-btn"
+            @click="exitProposalMode"
+          >
+            取消
+          </el-button>
+          <el-button
+            type="primary"
+            class="capsule-btn capsule-btn-primary"
+            :disabled="selectedCount === 0"
+            @click="finishProposal"
+          >
+            完成
+          </el-button>
+        </div>
+      </div>
+
+      <div
+        v-if="proposalMode"
+        class="proposal-mobile-list"
+      >
+        <button
+          v-for="row in products"
+          :key="row.id"
+          type="button"
+          class="proposal-mobile-item"
+          :class="{ selected: selectedIds.has(row.id) }"
+          :disabled="!isSelectable(row)"
+          @click="toggleMobileSelection(row)"
+        >
+          <span class="proposal-mobile-check">{{ selectedIds.has(row.id) ? '已选' : '选择' }}</span>
+          <span class="proposal-mobile-product">
+            <strong>{{ row.productName }}</strong>
+            <small>{{ row.productNo }} · ¥{{ row.facePrice.toFixed(2) }}</small>
+          </span>
+          <el-tag size="small" :type="row.status === 'active' ? 'success' : 'info'">
+            {{ statusMap[row.status] || row.status }}
+          </el-tag>
+        </button>
       </div>
 
       <div class="table-wrapper">
@@ -193,8 +248,18 @@
           stripe
           class="product-table"
           :fit="false"
+          :row-key="(row: any) => row.id"
+          :reserve-selection="true"
           @header-dragend="onHeaderDragEnd"
+          @selection-change="onSelectionChange"
         >
+          <el-table-column
+            v-if="proposalMode"
+            type="selection"
+            width="50"
+            fixed="left"
+            :selectable="isSelectable"
+          />
           <el-table-column
             label="图片"
             width="80"
@@ -680,11 +745,14 @@ import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { View, Hide, Operation, Grid } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
 import { productApi, categoryApi, brandApi, supplierApi, tagApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { hasPermission } from '@/types/permissions'
+import type { ProductOption, ProposalToken } from '@/types/sales'
 
 const authStore = useAuthStore()
+const router = useRouter()
 const userPermissions = computed(() => authStore.userPermissions)
 const roleCode = computed(() => authStore.userRoleCode)
 
@@ -698,6 +766,7 @@ const canDelete = computed(() => hasPermission(userPermissions.value, 'product:d
 const canExport = computed(() => hasPermission(userPermissions.value, 'product:export'))
 const canClone = computed(() => hasPermission(userPermissions.value, 'product:clone'))
 const canChangeStatus = computed(() => hasPermission(userPermissions.value, 'product:status'))
+const canProposalCreate = computed(() => hasPermission(userPermissions.value, 'proposal:create'))
 
 const statusMap: Record<string, string> = { active: '上架', inactive: '下架', draft: '草稿' }
 const stockStatusMap: Record<string, string> = { in_stock: '有货', out_of_stock: '缺货', preorder: '预售', unknown: '未知' }
@@ -715,6 +784,13 @@ const costVisible = ref(false)
 const colWidths = ref<Record<string, number>>({})
 const productTableRef = ref()
 const previewUrl = ref('')
+
+// ===== Proposal mode state =====
+const proposalMode = ref(false)
+const selectedIds = ref(new Set<string>())
+const allSelectedProducts = ref<ProductOption[]>([])
+
+const selectedCount = computed(() => selectedIds.value.size)
 
 function getPlaceholderText(name: string): string {
   if (!name) return '无图'
@@ -1132,6 +1208,70 @@ const handleExport = async () => {
   }
 }
 
+// ===== Proposal mode =====
+
+function isSelectable(row: { id: string; status: string }): boolean {
+  return row.status === 'active'
+}
+
+const enterProposalMode = () => {
+  proposalMode.value = true
+  selectedIds.value = new Set()
+  allSelectedProducts.value = []
+}
+
+const exitProposalMode = () => {
+  productTableRef.value?.clearSelection()
+  proposalMode.value = false
+  selectedIds.value = new Set()
+  allSelectedProducts.value = []
+}
+
+const buildProductOption = (row: any): ProductOption => ({
+  id: row.id,
+  product_name: row.productName,
+  product_no: row.productNo,
+  face_price: row.facePrice ?? null,
+  stock_status: row.stockStatus ?? null,
+  cover_image_url: row.primaryImage?.url ?? null,
+})
+
+const onSelectionChange = (rows: any[]) => {
+  selectedIds.value = new Set(rows.map((r) => r.id))
+  allSelectedProducts.value = rows.map(buildProductOption)
+}
+
+const toggleMobileSelection = (row: any) => {
+  if (!isSelectable(row)) return
+  const next = new Set(selectedIds.value)
+  const nextProducts = [...allSelectedProducts.value]
+  if (next.has(row.id)) {
+    next.delete(row.id)
+    const index = nextProducts.findIndex((product) => product.id === row.id)
+    if (index >= 0) nextProducts.splice(index, 1)
+  } else {
+    next.add(row.id)
+    nextProducts.push(buildProductOption(row))
+  }
+  selectedIds.value = next
+  allSelectedProducts.value = nextProducts
+}
+
+const finishProposal = () => {
+  if (selectedIds.value.size === 0) return
+  const token: ProposalToken = {
+    productIds: [...selectedIds.value],
+    options: allSelectedProducts.value,
+  }
+  const tokenId = crypto.randomUUID()
+  sessionStorage.setItem(`proposal_token_${tokenId}`, JSON.stringify(token))
+  exitProposalMode()
+  router.push({
+    path: '/proposals',
+    query: { mode: 'create', selection_token: tokenId },
+  })
+}
+
 onMounted(() => {
   fetchMasterData()
   fetchProducts()
@@ -1485,7 +1625,92 @@ onMounted(() => {
   color: var(--text-secondary);
 }
 
-/* ===== Responsive ===== */
+/* ===== Selection Bar ===== */
+.selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(30, 50, 90, 0.06);
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+}
+
+.selection-count {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brand-deep);
+}
+
+.selection-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.proposal-mobile-list {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .proposal-mobile-list {
+    display: grid;
+    gap: 10px;
+    margin: 12px 0;
+  }
+
+  .proposal-mobile-item {
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid rgba(30, 50, 90, 0.12);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.86);
+    color: var(--text-primary);
+    text-align: left;
+  }
+
+  .proposal-mobile-item.selected {
+    border-color: var(--brand-primary);
+    background: var(--brand-light);
+  }
+
+  .proposal-mobile-item:disabled {
+    opacity: 0.55;
+  }
+
+  .proposal-mobile-check {
+    color: var(--brand-primary);
+    font-weight: 700;
+  }
+
+  .proposal-mobile-product {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .proposal-mobile-product small {
+    margin-top: 4px;
+    color: var(--text-secondary);
+  }
+
+  .selection-bar {
+    flex-direction: column;
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .selection-actions {
+    justify-content: space-between;
+  }
+
+  .selection-actions .capsule-btn {
+    flex: 1;
+  }
+}
 @media (max-width: 768px) {
   .products-page {
     padding: 8px;

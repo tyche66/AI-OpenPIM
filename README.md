@@ -1,6 +1,6 @@
-# AI-PIM RiChangPIM
+# AI-openPIM openPIM
 
-AI 驱动的企业级产品信息管理平台（AI-PIM）- 日常构建版本
+AI 驱动的企业级产品信息管理平台（AI-openPIM）- 日常构建版本
 
 ## 快速开始
 
@@ -69,7 +69,7 @@ docker compose up -d
 ## 项目结构
 
 ```
-RiChangPIM/
+openPIM/
 ├── backend/                    # FastAPI 后端
 │   ├── app/
 │   │   ├── api/v1/            # API 路由

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI-PIM V1.2 restore drill — independent PG16 + MinIO temporary instance.
+# AI-openPIM V1.2 restore drill — independent PG16 + MinIO temporary instance.
 #
 # Per docs/v1.2-plan.md §5.3 and RELEASE_GATE.md §4:
 #   - NEVER mounts or modifies the existing production volumes.

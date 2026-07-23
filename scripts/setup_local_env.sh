@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# AI-PIM 本地/CI 一体化环境引导
+# AI-openPIM 本地/CI 一体化环境引导
 #
 # 一条命令完成「阶段构建审查」要求的专用库实跑：
 #   1) 启动依赖服务（postgres + pgvector / redis / minio / gotenberg）
@@ -9,7 +9,7 @@
 #   4) seed_data 装后种子（角色/权限/映射 + admin 用户）
 #   5) 全量 pytest（DeprecationWarning 视为 error）
 #
-# 环境隔离（全部限制在 AI-PIM 目录内）：
+# 环境隔离（全部限制在 AI-openPIM 目录内）：
 #   - 数据：./docker/volumes/postgres（postgres）/ redis / minio
 #   - 日志：./logs   备份：./backups
 #   - 密钥：仅从环境变量或 *.env.example 占位值读取，绝不写死

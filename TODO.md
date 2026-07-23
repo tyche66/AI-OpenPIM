@@ -1,4 +1,4 @@
-# AI-PIM RiChangPIM 开发 TODO
+# AI-openPIM openPIM 开发 TODO
 
 ## 当前状态
 

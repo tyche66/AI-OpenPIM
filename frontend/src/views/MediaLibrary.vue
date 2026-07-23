@@ -87,6 +87,17 @@
         </el-select>
       </div>
       <div class="toolbar-right">
+        <div class="selection-summary">
+          已选 {{ selectedFileIds.length }} 项
+        </div>
+        <el-button
+          v-if="selectedFileIds.length > 0 && hasPermission(['media:delete'])"
+          type="danger"
+          :icon="Delete"
+          @click="handleBatchDelete"
+        >
+          批量删除
+        </el-button>
         <el-select
           v-model="sortBy"
           class="ml-filter ml-sort"
@@ -132,6 +143,7 @@
         v-for="item in filteredItems"
         :key="item.id"
         class="gallery-card"
+        :class="{ 'is-selected': selectedFileIds.includes(item.id) }"
         @click="openDetail(item)"
         @dblclick="openPreview(item)"
       >
@@ -157,6 +169,14 @@
           </div>
           <div class="gallery-overlay">
             <div class="overlay-actions">
+              <el-button
+                circle
+                size="small"
+                :title="selectedFileIds.includes(item.id) ? '取消选择' : '选择'"
+                @click.stop="toggleFileSelection(item)"
+              >
+                <el-icon><Check /></el-icon>
+              </el-button>
               <el-button
                 circle
                 size="small"
@@ -251,7 +271,12 @@
         stripe
         style="width: 100%"
         @row-dblclick="openPreview"
+        @selection-change="handleSelectionChange"
       >
+        <el-table-column
+          type="selection"
+          width="42"
+        />
         <el-table-column
           label="预览"
           width="80"
@@ -696,7 +721,7 @@ import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Upload, Search, Grid, List, Document, ZoomIn, Refresh, Delete,
+  Upload, Search, Grid, List, Document, ZoomIn, Refresh, Delete, Check,
   TopRight, UploadFilled, Link, InfoFilled, ArrowRight,
 } from '@element-plus/icons-vue'
 import type { UploadFile } from 'element-plus'
@@ -758,6 +783,7 @@ const viewMode = ref<'grid' | 'list'>('grid')
 const detailVisible = ref(false)
 const detailItem = ref<ExtendedMediaItem | null>(null)
 const bindings = ref<Bindings>({ coverImages: [], sceneImages: [], manuals: [] })
+const selectedFileIds = ref<string[]>([])
 
 const previewVisible = ref(false)
 const previewItem = ref<ExtendedMediaItem | null>(null)
@@ -838,6 +864,16 @@ fetchData()
 
 function handleUploaded() {
   fetchData()
+}
+
+function toggleFileSelection(item: ExtendedMediaItem) {
+  const idx = selectedFileIds.value.indexOf(item.id)
+  if (idx >= 0) selectedFileIds.value.splice(idx, 1)
+  else selectedFileIds.value.push(item.id)
+}
+
+function handleSelectionChange(selection: ExtendedMediaItem[]) {
+  selectedFileIds.value = selection.map((item) => item.id)
 }
 
 function openPreview(item: ExtendedMediaItem) {
@@ -962,6 +998,43 @@ async function handleDelete(item: ExtendedMediaItem) {
     }
   }
 }
+
+async function handleBatchDelete() {
+  const targets = rawItems.value.filter((item) => selectedFileIds.value.includes(item.id))
+  if (targets.length === 0) return
+
+  try {
+    await ElMessageBox.confirm(`确定删除选中的 ${targets.length} 个文件吗？`, '确认批量删除', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+
+  const successes: string[] = []
+  const failures: string[] = []
+  for (const item of targets) {
+    try {
+      await mediaApi.delete(item.id, { suppressErrorMessage: true })
+      successes.push(item.name)
+    } catch {
+      failures.push(item.name)
+    }
+  }
+
+  if (successes.length > 0) {
+    ElMessage.success(`已删除 ${successes.length} 个文件`)
+  }
+  if (failures.length > 0) {
+    ElMessage.error(`删除失败 ${failures.length} 个文件`)
+  }
+
+  selectedFileIds.value = []
+  detailVisible.value = false
+  await fetchData()
+}
 </script>
 
 <style scoped>
@@ -1038,6 +1111,12 @@ async function handleDelete(item: ExtendedMediaItem) {
   align-items: center;
 }
 
+.selection-summary {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 .ml-search {
   width: 220px;
 }
@@ -1067,6 +1146,11 @@ async function handleDelete(item: ExtendedMediaItem) {
   transition: all 0.25s ease;
   display: flex;
   flex-direction: column;
+}
+
+.gallery-card.is-selected {
+  border-color: var(--el-color-primary);
+  box-shadow: 0 0 0 2px var(--el-color-primary-light-7);
 }
 
 .gallery-card:hover {

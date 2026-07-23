@@ -145,8 +145,8 @@ services:
 
 volumes:
   postgres_pg16_data:
-    name: richangpim_go_postgres_pg16_data_20260716
+    name: openpim_go_postgres_pg16_data_20260716
   redis_data:
-    name: richangpim_go_redis_data_20260716
+    name: openpim_go_redis_data_20260716
   minio_data:
-    name: richangpim_go_minio_data_20260716
+    name: openpim_go_minio_data_20260716

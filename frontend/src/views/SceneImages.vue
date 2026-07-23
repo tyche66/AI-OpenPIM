@@ -396,21 +396,31 @@
           prop="attachment_id"
         >
           <div class="media-select-area">
-            <el-image
-              v-if="selectedMedia"
-              :src="selectedMedia.thumbnailUrl || selectedMedia.url"
-              fit="cover"
-              class="selected-media-preview"
+            <div
+              v-if="selectedMediaList.length > 0"
+              class="selected-media-preview-wrap"
               @click="showMediaPicker = true"
             >
-              <template #error>
-                <div class="thumb-placeholder">
-                  <el-icon :size="24">
-                    <Picture />
-                  </el-icon>
-                </div>
-              </template>
-            </el-image>
+              <el-image
+                :src="selectedMediaList[0].thumbnailUrl || selectedMediaList[0].url"
+                fit="cover"
+                class="selected-media-preview"
+              >
+                <template #error>
+                  <div class="thumb-placeholder">
+                    <el-icon :size="24">
+                      <Picture />
+                    </el-icon>
+                  </div>
+                </template>
+              </el-image>
+              <div
+                v-if="selectedMediaList.length > 1"
+                class="selected-media-more"
+              >
+                已选择 {{ selectedMediaList.length }} 张图片
+              </div>
+            </div>
             <el-button
               v-else
               type="primary"
@@ -421,7 +431,7 @@
               从媒体库选择图片
             </el-button>
             <el-button
-              v-if="selectedMedia"
+              v-if="selectedMediaList.length > 0"
               size="small"
               text
               type="danger"
@@ -889,6 +899,7 @@
     <MediaPicker
       v-model="showMediaPicker"
       :type-filter="'image'"
+      :multiple="true"
       @select="handleMediaSelect"
     />
 
@@ -950,7 +961,7 @@ const previewUrl = ref('')
 const editingItem = ref<SceneImage | null>(null)
 const bindingItem = ref<SceneImage | null>(null)
 const drawerItem = ref<SceneImage | null>(null)
-const selectedMedia = ref<MediaItem | null>(null)
+const selectedMediaList = ref<MediaItem[]>([])
 const bindTab = ref('bound')
 const bindSearch = ref('')
 const productSearchResults = ref<any[]>([])
@@ -1036,7 +1047,7 @@ function openCreate() {
   form.sort = 0
   formProductIds.value = []
   createFormProductSearch.value = ''
-  selectedMedia.value = null
+  selectedMediaList.value = []
   if (formRef.value) formRef.value.resetFields()
   showCreateDialog.value = true
 }
@@ -1047,7 +1058,7 @@ function handleEdit(item: SceneImage) {
   form.attachment_id = item.attachment_id
   form.sort = item.sort
   formProductIds.value = item.bound_products.map((p) => p.id)
-  selectedMedia.value = {
+  selectedMediaList.value = [{
     id: item.attachment_id,
     name: item.file_name,
     type: 'image',
@@ -1056,7 +1067,7 @@ function handleEdit(item: SceneImage) {
     url: item.preview_url || item.file_url,
     thumbnailUrl: item.preview_url || item.file_url,
     uploadedAt: item.create_time,
-  } as MediaItem
+  } as MediaItem]
   showCreateDialog.value = true
 }
 
@@ -1066,18 +1077,33 @@ async function handleSubmit() {
     if (!valid) return
     saving.value = true
     try {
-      const payload = {
-        name: form.name,
-        attachment_id: form.attachment_id,
-        sort: form.sort,
-        product_ids: formProductIds.value.length > 0 ? formProductIds.value : undefined,
-      }
-      if (editingItem.value) {
-        await sceneImageApi.update(editingItem.value.id, payload)
-        ElMessage.success('场景图已更新')
+      if (editingItem.value || selectedMediaList.value.length <= 1) {
+        const payload = {
+          name: form.name,
+          attachment_id: form.attachment_id,
+          sort: form.sort,
+          product_ids: formProductIds.value.length > 0 ? formProductIds.value : undefined,
+        }
+        if (editingItem.value) {
+          await sceneImageApi.update(editingItem.value.id, payload)
+          ElMessage.success('场景图已更新')
+        } else {
+          await sceneImageApi.create(payload)
+          ElMessage.success('场景图已创建')
+        }
       } else {
-        await sceneImageApi.create(payload)
-        ElMessage.success('场景图已创建')
+        const results = await Promise.allSettled(
+          selectedMediaList.value.map((media, index) => sceneImageApi.create({
+            name: form.name.trim() ? `${form.name.trim()}-${index + 1}` : media.name,
+            attachment_id: media.id,
+            sort: form.sort + index,
+            product_ids: formProductIds.value.length > 0 ? formProductIds.value : undefined,
+          })),
+        )
+        const successCount = results.filter((r) => r.status === 'fulfilled').length
+        const failCount = results.length - successCount
+        if (successCount > 0) ElMessage.success(`已创建 ${successCount} 张场景图`)
+        if (failCount > 0) ElMessage.error(`有 ${failCount} 张场景图创建失败`)
       }
       showCreateDialog.value = false
       resetForm()
@@ -1294,13 +1320,14 @@ function toggleFormProduct(p: any) {
   }
 }
 
-function handleMediaSelect(item: MediaItem) {
-  selectedMedia.value = item
-  form.attachment_id = item.id
+function handleMediaSelect(payload: MediaItem | MediaItem[]) {
+  const items = Array.isArray(payload) ? payload : [payload]
+  selectedMediaList.value = items
+  form.attachment_id = items[0]?.id || ''
 }
 
 function clearMedia() {
-  selectedMedia.value = null
+  selectedMediaList.value = []
   form.attachment_id = ''
 }
 
@@ -1309,7 +1336,7 @@ function resetForm() {
   form.attachment_id = ''
   form.sort = 0
   formProductIds.value = []
-  selectedMedia.value = null
+  selectedMediaList.value = []
   editingItem.value = null
   if (formRef.value) formRef.value.resetFields()
 }
@@ -1533,6 +1560,25 @@ onMounted(fetchData)
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.selected-media-preview-wrap {
+  position: relative;
+  cursor: pointer;
+}
+
+.selected-media-more {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(30, 50, 90, 0.72);
+  color: #fff;
+  font-size: 12px;
+  text-align: center;
 }
 
 .selected-media-preview {

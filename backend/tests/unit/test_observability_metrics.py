@@ -9,7 +9,17 @@ from __future__ import annotations
 
 import re
 
+import pytest
+
 from app.observability import metrics
+
+
+@pytest.fixture(autouse=True)
+def _clean_metrics():
+    """Reset all metrics state before each test for isolation."""
+    metrics.reset()
+    yield
+    metrics.reset()
 
 
 def test_counter_inc_renders_with_labels():
@@ -18,7 +28,7 @@ def test_counter_inc_renders_with_labels():
     assert "# HELP pim_http_requests_total" in text
     assert "# TYPE pim_http_requests_total counter" in text
     assert re.search(
-        r'pim_http_requests_total\{method="GET",route="/api/v1/products",status="200"\} \S+',
+        r'pim_http_requests_total\{method="GET",route="/api/v1/products",status="200"\} 1',
         text,
     )
 

@@ -223,6 +223,22 @@
                 {{ scope.row.parse_error || scope.row.index_error || '-' }}
               </template>
             </el-table-column>
+            <el-table-column
+              label="操作"
+              width="110"
+              align="center"
+            >
+              <template #default="scope">
+                <el-button
+                  text
+                  size="small"
+                  type="danger"
+                  @click="handleDeleteManual(scope.row)"
+                >
+                  删除说明书
+                </el-button>
+              </template>
+            </el-table-column>
           </el-table>
         </div>
       </section>
@@ -711,6 +727,26 @@ const fetchManuals = async () => {
     manuals.value = res.data?.list || []
   } catch {
     manuals.value = []
+  }
+}
+
+const handleDeleteManual = async (manual: ProductManual) => {
+  try {
+    await ElMessageBox.confirm(`确定删除说明书吗？删除后将解除与当前产品的关联。`, '确认删除', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+  try {
+    await manualApi.delete(manual.id)
+    ElMessage.success('说明书已删除')
+    await fetchManuals()
+  } catch (e: any) {
+    console.error('[manual delete] failed', e?.response?.status, e?.response?.data)
+    // user-facing message is rendered by the response interceptor
   }
 }
 

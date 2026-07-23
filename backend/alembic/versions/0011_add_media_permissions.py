@@ -68,9 +68,12 @@ def upgrade() -> None:
             text("""
                 INSERT INTO permission (id, perm_code, perm_name, resource,
                                         action, type, create_time, update_time, is_deleted)
-                VALUES (:id, :perm_code, :perm_name, :resource,
-                        :action, :type, now(), now(), false)
-                ON CONFLICT (perm_code) DO NOTHING
+                SELECT :id, :perm_code, :perm_name, :resource,
+                       :action, :type, now(), now(), false
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM permission
+                    WHERE perm_code = :perm_code AND is_deleted = false
+                )
             """),
             {
                 "id": str(uuid4()),
@@ -124,7 +127,7 @@ def downgrade() -> None:
         op.get_bind().execute(
             text("""
                 DELETE FROM permission
-                WHERE perm_code = :perm_code
+                WHERE perm_code = :perm_code AND is_deleted = false
             """),
             {"perm_code": perm_code},
         )

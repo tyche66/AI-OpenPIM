@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI-PIM 后端容器入口：等待 DB -> alembic 迁移 -> 初始管理员 -> 种子数据 -> 启动服务。
+# AI-openPIM 后端容器入口：等待 DB -> alembic 迁移 -> 初始管理员 -> 种子数据 -> 启动服务。
 # 任何必要步骤真实失败时，以非零状态退出，绝不对外提供服务。
 set -euo pipefail
 

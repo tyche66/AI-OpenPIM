@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessageBox } from 'element-plus'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { AxiosError } from 'axios'
 
 vi.mock('@/api', () => ({
   productApi: { get: vi.fn() },
-  manualApi: { list: vi.fn().mockResolvedValue({ data: { list: [] } }) },
+  manualApi: { list: vi.fn().mockResolvedValue({ data: { list: [] } }), delete: vi.fn() },
   categoryApi: { list: vi.fn().mockResolvedValue({ data: [] }) },
   brandApi: { list: vi.fn().mockResolvedValue({ data: { list: [] } }) },
   supplierApi: { list: vi.fn().mockResolvedValue({ data: { list: [] } }) },
@@ -27,10 +27,12 @@ vi.mock('@/components/SceneImageSelector.vue', () => ({
   },
 }))
 
-import { productApi } from '@/api'
+import { productApi, manualApi } from '@/api'
 import ProductDetail from '@/views/ProductDetail.vue'
 
 const mockGet = productApi.get as ReturnType<typeof vi.fn>
+const mockManualDelete = manualApi.delete as ReturnType<typeof vi.fn>
+const confirmSpy = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue(undefined as never)
 
 function httpError(status: number) {
   return new AxiosError(
@@ -127,5 +129,38 @@ describe('ProductDetail persisted image mappings', () => {
       name: 'Office',
       sortOrder: 7,
     }])
+  })
+})
+
+describe('ProductDetail manual deletion', () => {
+  beforeEach(() => {
+    mockGet.mockReset()
+    mockManualDelete.mockReset()
+  })
+
+  it('deletes a manual and refreshes the manual list', async () => {
+    mockGet.mockResolvedValue({
+      id: 'product-1',
+      product_no: 'P-001',
+      product_name: 'Test product',
+      face_price: 100,
+      status: 'active',
+      stock_status: 'in_stock',
+      tags: [],
+      tag_ids: [],
+    })
+    const listMock = manualApi.list as ReturnType<typeof vi.fn>
+    listMock.mockResolvedValueOnce({ data: { list: [{ id: 'manual-1', doc_type: 'manual', parse_status: 'parsed', index_status: 'indexed', create_time: '2024-01-01T00:00:00Z', update_time: '2024-01-01T00:00:00Z' }], total: 1 } })
+      .mockResolvedValueOnce({ data: { list: [], total: 0 } })
+    mockManualDelete.mockResolvedValue({ data: { code: 200, msg: 'success' } })
+
+    const wrapper = await mountDetail()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text().includes('删除说明书'))!.trigger('click')
+    await flushPromises()
+
+    expect(mockManualDelete).toHaveBeenCalledWith('manual-1')
+    expect(listMock.mock.calls.at(-1)?.[0]).toEqual({ product_id: 'test-id', page: 1, size: 50 })
   })
 })

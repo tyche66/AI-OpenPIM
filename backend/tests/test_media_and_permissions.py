@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token
 from app.models.audit import Share, ShareToken
@@ -43,13 +43,13 @@ async def _auth_header(client: AsyncClient) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-async def _create_test_product(session) -> Product:
+async def _create_test_product(db: AsyncSession) -> Product:
     """Create a minimal product with brand/supplier/category."""
     brand = Brand(brand_name=f"brand_{uuid4().hex[:8]}", description="test")
     supplier = Supplier(supplier_name=f"supplier_{uuid4().hex[:8]}", contact="t", phone="123")
     category = Category(category_name=f"cat_{uuid4().hex[:8]}", level=1, sort=0)
-    session.add_all([brand, supplier, category])
-    await session.flush()
+    db.add_all([brand, supplier, category])
+    await db.flush()
 
     product = Product(
         product_no=f"PN{uuid4().hex[:8].upper()}",
@@ -60,9 +60,8 @@ async def _create_test_product(session) -> Product:
         face_price=99.99,
         status="draft",
     )
-    session.add(product)
-    await session.flush()
-    await session.commit()
+    db.add(product)
+    await db.flush()
     return product
 
 
@@ -213,26 +212,24 @@ async def test_media_delete_unreferenced_succeeds(client: AsyncClient):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
-async def test_media_delete_referenced_fails(client: AsyncClient, _sessionmaker):
+async def test_media_delete_referenced_fails(client: AsyncClient, db: AsyncSession):
     headers = await _auth_header(client)
     data = await _upload_file(client, headers, _IMAGE_JPEG_CONTENT, "ref.jpg", "image/jpeg")
 
     att_id = UUID(data["attachment_id"])
-    async with _sessionmaker() as session:
-        product = await _create_test_product(session)
+    product = await _create_test_product(db)
 
-        pi = ProductImage(product_id=product.id, attachment_id=att_id, is_cover=True)
-        session.add(pi)
-        await session.commit()
+    pi = ProductImage(product_id=product.id, attachment_id=att_id, is_cover=True)
+    db.add(pi)
+    await db.commit()
 
     resp = await client.delete(f"/api/v1/files/{att_id}", headers=headers)
     assert resp.status_code == 422
     detail = resp.json()["detail"]
     assert "产品图片" in detail["msg"]
 
-    async with _sessionmaker() as session:
-        att = await session.get(Attachment, att_id)
-        assert att.is_deleted is False
+    att = await db.get(Attachment, att_id)
+    assert att.is_deleted is False
 
 
 # ---------------------------------------------------------------------------
@@ -240,16 +237,15 @@ async def test_media_delete_referenced_fails(client: AsyncClient, _sessionmaker)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
-async def test_media_replace_keeps_references(client: AsyncClient, _sessionmaker):
+async def test_media_replace_keeps_references(client: AsyncClient, db: AsyncSession):
     headers = await _auth_header(client)
     data = await _upload_file(client, headers, _IMAGE_JPEG_CONTENT, "orig.jpg", "image/jpeg")
     att_id = UUID(data["attachment_id"])
 
-    async with _sessionmaker() as session:
-        product = await _create_test_product(session)
-        pi = ProductImage(product_id=product.id, attachment_id=att_id, is_cover=True)
-        session.add(pi)
-        await session.commit()
+    product = await _create_test_product(db)
+    pi = ProductImage(product_id=product.id, attachment_id=att_id, is_cover=True)
+    db.add(pi)
+    await db.commit()
 
     new_content = _IMAGE_JPEG_CONTENT + b"extra"
     resp = await client.put(
@@ -259,17 +255,16 @@ async def test_media_replace_keeps_references(client: AsyncClient, _sessionmaker
     )
     assert resp.status_code == 200
 
-    async with _sessionmaker() as session:
-        pi_check = await session.execute(
-            select(ProductImage).where(
-                ProductImage.attachment_id == att_id,
-                ProductImage.is_deleted.is_(False),
-            )
+    pi_check = await db.execute(
+        select(ProductImage).where(
+            ProductImage.attachment_id == att_id,
+            ProductImage.is_deleted.is_(False),
         )
-        assert pi_check.scalar_one_or_none() is not None
+    )
+    assert pi_check.scalar_one_or_none() is not None
 
-        att = await session.get(Attachment, att_id)
-        assert att.file_size == len(new_content)
+    att = await db.get(Attachment, att_id)
+    assert att.file_size == len(new_content)
 
 
 # ---------------------------------------------------------------------------
@@ -277,13 +272,13 @@ async def test_media_replace_keeps_references(client: AsyncClient, _sessionmaker
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
-async def test_product_add_images_success(client: AsyncClient, _sessionmaker):
+async def test_product_add_images_success(client: AsyncClient, db: AsyncSession):
     headers = await _auth_header(client)
     img1 = await _upload_file(client, headers, _IMAGE_JPEG_CONTENT, "p1.jpg", "image/jpeg")
     img2 = await _upload_file(client, headers, _IMAGE_PNG_CONTENT, "p2.png", "image/png")
 
-    async with _sessionmaker() as session:
-        product = await _create_test_product(session)
+    product = await _create_test_product(db)
+    await db.commit()
 
     resp = await client.post(
         f"/api/v1/products/{product.id}/images",
@@ -300,16 +295,15 @@ async def test_product_add_images_success(client: AsyncClient, _sessionmaker):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
-async def test_product_images_exceeds_10_fails(client: AsyncClient, _sessionmaker):
+async def test_product_images_exceeds_10_fails(client: AsyncClient, db: AsyncSession):
     headers = await _auth_header(client)
-    async with _sessionmaker() as session:
-        product = await _create_test_product(session)
+    product = await _create_test_product(db)
 
-        for i in range(10):
-            data = await _upload_file(client, headers, _IMAGE_JPEG_CONTENT, f"img{i}.jpg", "image/jpeg")
-            pi = ProductImage(product_id=product.id, attachment_id=UUID(data["attachment_id"]), sort=i)
-            session.add(pi)
-        await session.commit()
+    for i in range(10):
+        data = await _upload_file(client, headers, _IMAGE_JPEG_CONTENT, f"img{i}.jpg", "image/jpeg")
+        pi = ProductImage(product_id=product.id, attachment_id=UUID(data["attachment_id"]), sort=i)
+        db.add(pi)
+    await db.commit()
 
     extra = await _upload_file(client, headers, _IMAGE_JPEG_CONTENT, "extra.jpg", "image/jpeg")
     resp = await client.post(
@@ -326,17 +320,16 @@ async def test_product_images_exceeds_10_fails(client: AsyncClient, _sessionmake
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
-async def test_set_product_cover_removes_other_covers(client: AsyncClient, _sessionmaker):
+async def test_set_product_cover_removes_other_covers(client: AsyncClient, db: AsyncSession):
     headers = await _auth_header(client)
     img1 = await _upload_file(client, headers, _IMAGE_JPEG_CONTENT, "c1.jpg", "image/jpeg")
     img2 = await _upload_file(client, headers, _IMAGE_PNG_CONTENT, "c2.png", "image/png")
 
-    async with _sessionmaker() as session:
-        product = await _create_test_product(session)
-        pi1 = ProductImage(product_id=product.id, attachment_id=UUID(img1["attachment_id"]), is_cover=False)
-        pi2 = ProductImage(product_id=product.id, attachment_id=UUID(img2["attachment_id"]), is_cover=True)
-        session.add_all([pi1, pi2])
-        await session.commit()
+    product = await _create_test_product(db)
+    pi1 = ProductImage(product_id=product.id, attachment_id=UUID(img1["attachment_id"]), is_cover=False)
+    pi2 = ProductImage(product_id=product.id, attachment_id=UUID(img2["attachment_id"]), is_cover=True)
+    db.add_all([pi1, pi2])
+    await db.commit()
 
     resp = await client.patch(
         f"/api/v1/products/{product.id}/images/{pi1.id}/cover",
@@ -344,11 +337,10 @@ async def test_set_product_cover_removes_other_covers(client: AsyncClient, _sess
     )
     assert resp.status_code == 200
 
-    async with _sessionmaker() as session:
-        pi1_db = await session.get(ProductImage, pi1.id)
-        pi2_db = await session.get(ProductImage, pi2.id)
-        assert pi1_db.is_cover is True
-        assert pi2_db.is_cover is False
+    await db.refresh(pi1)
+    await db.refresh(pi2)
+    assert pi1.is_cover is True
+    assert pi2.is_cover is False
 
 
 # ---------------------------------------------------------------------------
@@ -356,7 +348,7 @@ async def test_set_product_cover_removes_other_covers(client: AsyncClient, _sess
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
-async def test_product_bind_scene_image_success(client: AsyncClient, _sessionmaker):
+async def test_product_bind_scene_image_success(client: AsyncClient, db: AsyncSession):
     headers = await _auth_header(client)
     img = await _upload_file(client, headers, _IMAGE_JPEG_CONTENT, "scene.jpg", "image/jpeg")
 
@@ -368,15 +360,15 @@ async def test_product_bind_scene_image_success(client: AsyncClient, _sessionmak
     assert resp.status_code == 201
     si_id = resp.json()["data"]["id"]
 
-    async with _sessionmaker() as session:
-        product = await _create_test_product(session)
-        resp = await client.post(
-            f"/api/v1/products/{product.id}/scene-images",
-            json={"scene_image_ids": [si_id]},
-            headers=headers,
-        )
-        assert resp.status_code == 201
-        assert resp.json()["data"]["bound"] == 1
+    product = await _create_test_product(db)
+    await db.commit()
+    resp = await client.post(
+        f"/api/v1/products/{product.id}/scene-images",
+        json={"scene_image_ids": [si_id]},
+        headers=headers,
+    )
+    assert resp.status_code == 201
+    assert resp.json()["data"]["bound"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -384,21 +376,20 @@ async def test_product_bind_scene_image_success(client: AsyncClient, _sessionmak
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
-async def test_product_scene_images_exceeds_30_fails(client: AsyncClient, _sessionmaker):
+async def test_product_scene_images_exceeds_30_fails(client: AsyncClient, db: AsyncSession):
     headers = await _auth_header(client)
-    async with _sessionmaker() as session:
-        product = await _create_test_product(session)
+    product = await _create_test_product(db)
 
-        si_ids = []
-        for i in range(30):
-            img = await _upload_file(client, headers, _IMAGE_JPEG_CONTENT, f"si{i}.jpg", "image/jpeg")
-            si = SceneImage(name=f"SI{i}", attachment_id=UUID(img["attachment_id"]))
-            session.add(si)
-            await session.flush()
-            stmt = product_scene_image.insert().values(product_id=product.id, scene_image_id=si.id)
-            await session.execute(stmt)
-            si_ids.append(si.id)
-        await session.commit()
+    si_ids = []
+    for i in range(30):
+        img = await _upload_file(client, headers, _IMAGE_JPEG_CONTENT, f"si{i}.jpg", "image/jpeg")
+        si = SceneImage(name=f"SI{i}", attachment_id=UUID(img["attachment_id"]))
+        db.add(si)
+        await db.flush()
+        stmt = product_scene_image.insert().values(product_id=product.id, scene_image_id=si.id)
+        await db.execute(stmt)
+        si_ids.append(si.id)
+    await db.commit()
 
     extra_img = await _upload_file(client, headers, _IMAGE_JPEG_CONTENT, "extra_scene.jpg", "image/jpeg")
     resp = await client.post(
@@ -423,7 +414,7 @@ async def test_product_scene_images_exceeds_30_fails(client: AsyncClient, _sessi
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
-async def test_scene_image_bind_multiple_products(client: AsyncClient, _sessionmaker):
+async def test_scene_image_bind_multiple_products(client: AsyncClient, db: AsyncSession):
     headers = await _auth_header(client)
     img = await _upload_file(client, headers, _IMAGE_JPEG_CONTENT, "multi.jpg", "image/jpeg")
 
@@ -435,9 +426,9 @@ async def test_scene_image_bind_multiple_products(client: AsyncClient, _sessionm
     assert resp.status_code == 201
     si_id = UUID(resp.json()["data"]["id"])
 
-    async with _sessionmaker() as session:
-        prod1 = await _create_test_product(session)
-        prod2 = await _create_test_product(session)
+    prod1 = await _create_test_product(db)
+    prod2 = await _create_test_product(db)
+    await db.commit()
 
     resp = await client.post(
         f"/api/v1/scene-images/{si_id}/bind",
@@ -446,10 +437,14 @@ async def test_scene_image_bind_multiple_products(client: AsyncClient, _sessionm
     )
     assert resp.status_code == 200
 
-    async with _sessionmaker() as session:
-        stmt = select(SceneImage).where(SceneImage.id == si_id).options(selectinload(SceneImage.products))
-        si = (await session.execute(stmt)).scalar_one()
-        assert len(si.products) == 2
+    from sqlalchemy.orm import selectinload
+
+    si = await db.scalar(
+        select(SceneImage)
+        .where(SceneImage.id == si_id)
+        .options(selectinload(SceneImage.products))
+    )
+    assert len(si.products) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -457,7 +452,7 @@ async def test_scene_image_bind_multiple_products(client: AsyncClient, _sessionm
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
-async def test_product_unbind_scene_image_keeps_media(client: AsyncClient, _sessionmaker):
+async def test_product_unbind_scene_image_keeps_media(client: AsyncClient, db: AsyncSession):
     headers = await _auth_header(client)
     img = await _upload_file(client, headers, _IMAGE_JPEG_CONTENT, "unbind.jpg", "image/jpeg")
     att_id = UUID(img["attachment_id"])
@@ -470,13 +465,13 @@ async def test_product_unbind_scene_image_keeps_media(client: AsyncClient, _sess
     assert resp.status_code == 201
     si_id = resp.json()["data"]["id"]
 
-    async with _sessionmaker() as session:
-        product = await _create_test_product(session)
-        await client.post(
-            f"/api/v1/products/{product.id}/scene-images",
-            json={"scene_image_ids": [si_id]},
-            headers=headers,
-        )
+    product = await _create_test_product(db)
+    await db.commit()
+    await client.post(
+        f"/api/v1/products/{product.id}/scene-images",
+        json={"scene_image_ids": [si_id]},
+        headers=headers,
+    )
 
     resp = await client.delete(
         f"/api/v1/products/{product.id}/scene-images/{si_id}",
@@ -484,10 +479,9 @@ async def test_product_unbind_scene_image_keeps_media(client: AsyncClient, _sess
     )
     assert resp.status_code == 200
 
-    async with _sessionmaker() as session:
-        att = await session.get(Attachment, att_id)
-        assert att is not None
-        assert att.is_deleted is False
+    att = await db.get(Attachment, att_id)
+    assert att is not None
+    assert att.is_deleted is False
 
 
 # ---------------------------------------------------------------------------
@@ -495,27 +489,26 @@ async def test_product_unbind_scene_image_keeps_media(client: AsyncClient, _sess
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
-async def test_share_api_returns_cover_image_url(client: AsyncClient, _sessionmaker):
+async def test_share_api_returns_cover_image_url(client: AsyncClient, db: AsyncSession):
     headers = await _auth_header(client)
     img = await _upload_file(client, headers, _IMAGE_JPEG_CONTENT, "cover.jpg", "image/jpeg")
 
-    async with _sessionmaker() as session:
-        product = await _create_test_product(session)
-        pi = ProductImage(product_id=product.id, attachment_id=UUID(img["attachment_id"]), is_cover=True)
-        session.add(pi)
-        await session.commit()
+    product = await _create_test_product(db)
+    pi = ProductImage(product_id=product.id, attachment_id=UUID(img["attachment_id"]), is_cover=True)
+    db.add(pi)
+    await db.commit()
 
-        from app.models.sales import Proposal, ProposalItem
-        proposal = Proposal(
-            proposal_name="Test Share Cover",
-            proposal_no=f"PR-{uuid4().hex[:8].upper()}",
-            creator_id=(await _get_admin_user_id(session)),
-        )
-        session.add(proposal)
-        await session.flush()
-        pi_item = ProposalItem(proposal_id=proposal.id, product_id=product.id)
-        session.add(pi_item)
-        await session.commit()
+    from app.models.sales import Proposal, ProposalItem
+    proposal = Proposal(
+        proposal_no=f"PROPOSAL{uuid4().hex[:8].upper()}",
+        proposal_name="Test Share Cover",
+        creator_id=(await _get_admin_user_id(db)),
+    )
+    db.add(proposal)
+    await db.flush()
+    pi_item = ProposalItem(proposal_id=proposal.id, product_id=product.id)
+    db.add(pi_item)
+    await db.commit()
 
     share_info = await _create_share_token(client, headers, str(proposal.id), expire_hours=24)
 
@@ -530,7 +523,7 @@ async def test_share_api_returns_cover_image_url(client: AsyncClient, _sessionma
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
-async def test_share_api_returns_scene_images(client: AsyncClient, _sessionmaker):
+async def test_share_api_returns_scene_images(client: AsyncClient, db: AsyncSession):
     headers = await _auth_header(client)
     si_img = await _upload_file(client, headers, _IMAGE_JPEG_CONTENT, "si_share.jpg", "image/jpeg")
 
@@ -541,25 +534,25 @@ async def test_share_api_returns_scene_images(client: AsyncClient, _sessionmaker
     )
     si_id = resp.json()["data"]["id"]
 
-    async with _sessionmaker() as session:
-        product = await _create_test_product(session)
-        await client.post(
-            f"/api/v1/products/{product.id}/scene-images",
-            json={"scene_image_ids": [si_id]},
-            headers=headers,
-        )
+    product = await _create_test_product(db)
+    await db.commit()
+    await client.post(
+        f"/api/v1/products/{product.id}/scene-images",
+        json={"scene_image_ids": [si_id]},
+        headers=headers,
+    )
 
-        from app.models.sales import Proposal, ProposalItem
-        proposal = Proposal(
-            proposal_name="Test Share SI",
-            proposal_no=f"PR-{uuid4().hex[:8].upper()}",
-            creator_id=(await _get_admin_user_id(session)),
-        )
-        session.add(proposal)
-        await session.flush()
-        pi_item = ProposalItem(proposal_id=proposal.id, product_id=product.id)
-        session.add(pi_item)
-        await session.commit()
+    from app.models.sales import Proposal, ProposalItem
+    proposal = Proposal(
+        proposal_no=f"PROPOSAL{uuid4().hex[:8].upper()}",
+        proposal_name="Test Share SI",
+        creator_id=(await _get_admin_user_id(db)),
+    )
+    db.add(proposal)
+    await db.flush()
+    pi_item = ProposalItem(proposal_id=proposal.id, product_id=product.id)
+    db.add(pi_item)
+    await db.commit()
 
     share_info = await _create_share_token(client, headers, str(proposal.id), expire_hours=24)
 
@@ -576,24 +569,33 @@ async def test_share_api_returns_scene_images(client: AsyncClient, _sessionmaker
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
-async def test_share_token_expired_cannot_access(client: AsyncClient, _sessionmaker):
+async def test_share_token_expired_cannot_access(client: AsyncClient, db: AsyncSession):
     headers = await _auth_header(client)
-    async with _sessionmaker() as session:
-        product = await _create_test_product(session)
+    product = await _create_test_product(db)
 
-        from app.models.sales import Proposal, ProposalItem
-        proposal = Proposal(
-            proposal_name="Expired Share",
-            proposal_no=f"PR-{uuid4().hex[:8].upper()}",
-            creator_id=(await _get_admin_user_id(session)),
-        )
-        session.add(proposal)
-        await session.flush()
-        pi_item = ProposalItem(proposal_id=proposal.id, product_id=product.id)
-        session.add(pi_item)
-        await session.commit()
+    from app.models.sales import Proposal, ProposalItem
+    proposal = Proposal(
+        proposal_no=f"PROPOSAL{uuid4().hex[:8].upper()}",
+        proposal_name="Expired Share",
+        creator_id=(await _get_admin_user_id(db)),
+    )
+    db.add(proposal)
+    await db.flush()
+    pi_item = ProposalItem(proposal_id=proposal.id, product_id=product.id)
+    db.add(pi_item)
+    await db.commit()
 
-    share_info = await _create_share_token(client, headers, str(proposal.id), expire_hours=0)
+    share_info = await _create_share_token(client, headers, str(proposal.id), expire_hours=1)
+
+    # 将 token 的过期时间改为过去，模拟过期场景
+    from app.models.audit import ShareToken
+    result = await db.execute(
+        select(ShareToken).where(ShareToken.token == share_info["token"], ShareToken.is_deleted.is_(False))
+    )
+    token_obj = result.scalar_one_or_none()
+    assert token_obj is not None, "ShareToken not found"
+    token_obj.expire_time = datetime.now(UTC) - timedelta(hours=1)
+    await db.commit()
 
     resp = await client.get(f"/api/v1/share/{share_info['token']}")
     assert resp.status_code == 403
@@ -605,9 +607,9 @@ async def test_share_token_expired_cannot_access(client: AsyncClient, _sessionma
 # Helper: get admin user ID
 # ---------------------------------------------------------------------------
 
-async def _get_admin_user_id(session) -> UUID:
+async def _get_admin_user_id(db: AsyncSession) -> UUID:
     from app.models.user import User
-    result = await session.execute(select(User.id).where(User.username == "admin"))
+    result = await db.execute(select(User.id).where(User.username == "admin"))
     return result.scalar_one()
 
 
@@ -656,7 +658,7 @@ async def test_media_replace_type_mismatch_fails(client: AsyncClient):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
-async def test_scene_image_delete_unbinds_products(client: AsyncClient, _sessionmaker):
+async def test_scene_image_delete_unbinds_products(client: AsyncClient, db: AsyncSession):
     headers = await _auth_header(client)
     img = await _upload_file(client, headers, _IMAGE_JPEG_CONTENT, "si_del.jpg", "image/jpeg")
 
@@ -667,21 +669,20 @@ async def test_scene_image_delete_unbinds_products(client: AsyncClient, _session
     )
     si_id = UUID(resp.json()["data"]["id"])
 
-    async with _sessionmaker() as session:
-        product = await _create_test_product(session)
-        await client.post(
-            f"/api/v1/products/{product.id}/scene-images",
-            json={"scene_image_ids": [str(si_id)]},
-            headers=headers,
-        )
+    product = await _create_test_product(db)
+    await db.commit()
+    await client.post(
+        f"/api/v1/products/{product.id}/scene-images",
+        json={"scene_image_ids": [str(si_id)]},
+        headers=headers,
+    )
 
     await client.delete(f"/api/v1/scene-images/{si_id}", headers=headers)
 
-    async with _sessionmaker() as session:
-        result = await session.execute(
-            select(product_scene_image).where(
-                product_scene_image.c.scene_image_id == si_id,
-                product_scene_image.c.is_deleted.is_(False),
-            )
+    result = await db.execute(
+        select(product_scene_image).where(
+            product_scene_image.c.scene_image_id == si_id,
+            product_scene_image.c.is_deleted.is_(False),
         )
-        assert result.scalar_one_or_none() is None
+    )
+    assert result.scalar_one_or_none() is None

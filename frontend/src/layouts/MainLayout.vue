@@ -13,8 +13,8 @@
       <div class="logo">
         <img
           class="logo-img"
-          src="/RiChangPIM-white.png"
-          alt="AI-PIM"
+          src="/openPIM-white.png"
+          alt="AI-openPIM"
         >
       </div>
       <el-menu
@@ -228,7 +228,7 @@ const routeLabels: Record<string, [string, string]> = {
   import: ['AI 功能', '批量导入'],
   version: ['系统信息', '版本'],
 }
-const currentLabels = computed(() => routeLabels[route.path.split('/')[1]] || ['工作台', 'AI-PIM'])
+const currentLabels = computed(() => routeLabels[route.path.split('/')[1]] || ['工作台', 'AI-openPIM'])
 const pageSection = computed(() => currentLabels.value[0])
 const pageTitle = computed(() => route.params.id ? `${currentLabels.value[1]}详情` : currentLabels.value[1])
 const userInitial = computed(() => (authStore.currentUser?.username || 'AI').slice(0, 1).toUpperCase())
@@ -255,6 +255,8 @@ const handleLogout = async () => {
   position: sticky;
   top: 12px;
   height: calc(100vh - 24px);
+  display: flex;
+  flex-direction: column;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 32px;
   background:
@@ -263,6 +265,13 @@ const handleLogout = async () => {
   color: #fff;
   box-shadow: 0 24px 70px rgba(30, 50, 90, 0.2);
   overflow: hidden;
+}
+
+.sidebar :deep(.el-menu) {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .logo-img {
@@ -295,11 +304,6 @@ const handleLogout = async () => {
   background: rgba(255, 255, 255, 0.16);
   font-size: 13px;
   letter-spacing: 0.08em;
-}
-
-.sidebar :deep(.el-menu) {
-  border-right: 0;
-  padding: 12px;
 }
 
 .sidebar :deep(.el-sub-menu__title),

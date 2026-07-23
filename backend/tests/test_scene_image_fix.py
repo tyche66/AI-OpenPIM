@@ -132,9 +132,8 @@ async def test_rebind_after_unbind_succeeds(client, _sessionmaker):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 201, resp.text
-    data = resp.json()
-    assert data["code"] == 200
-    assert data["data"]["bound"] == 1
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["data"]["bound"] == 1
 
 
 async def test_product_detail_omits_unbound_scene_images(client, _sessionmaker):

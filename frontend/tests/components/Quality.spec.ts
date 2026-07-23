@@ -70,7 +70,7 @@ describe('Quality.vue', () => {
                   specification: 'W3200*D1900*H750 mm',
                   data_source: 'manual-import-2026',
                   supplier_id: 's1',
-                  supplier_name: '示例',
+                  supplier_name: '圣奥',
                   category_id: 'c1',
                   brand_id: 'b1',
                   create_time: '2026-07-16T08:00:00',
@@ -99,7 +99,7 @@ describe('Quality.vue', () => {
     // Table content
     expect(wrapper.text()).toContain('EMD89R.320190')
     expect(wrapper.text()).toContain('会议桌')
-    expect(wrapper.text()).toContain('示例')
+    expect(wrapper.text()).toContain('圣奥')
 
     // 必须显示「待核价」占位标签而非裸 99999 数值
     expect(wrapper.text()).toContain('待核价')

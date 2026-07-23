@@ -19,9 +19,9 @@ def test_product_response_serializes_orm_tags():
         "completeness_status": "pending",
         "create_time": "2026-07-17T00:00:00Z",
         "update_time": "2026-07-17T00:00:00Z",
-        "tags": [SimpleNamespace(tag_name="示例")],
+        "tags": [SimpleNamespace(tag_name="铭达")],
     }
-    assert ProductResponse.model_validate(product).tags == ["示例"]
+    assert ProductResponse.model_validate(product).tags == ["铭达"]
 
 
 def test_product_update_rejects_null_face_price():

@@ -1,17 +1,17 @@
 import pytest
 
-from app.scripts.import_sample_products import validate_records
+from app.scripts.import_pilot_products import validate_records
 
 
 def _record():
     return {
         "product_no": "EMD89R.320190",
         "product_name": "总裁桌",
-        "brand_name": "示例",
-        "supplier_name": "示例",
+        "brand_name": "圣奥",
+        "supplier_name": "圣奥",
         "category_parent": "办公桌",
         "category_name": "独立主管桌",
-        "series": "示例",
+        "series": "铭达",
         "data_source": "source.txt",
         "face_price": 99999,
         "completeness_status": "pending",

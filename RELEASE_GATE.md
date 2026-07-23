@@ -1,4 +1,4 @@
-# RELEASE GATE — AI-PIM V1.2
+# RELEASE GATE — AI-openPIM V1.2
 
 > 唯一基线：`docs/v1.2-plan.md`
 > 版本号：`v1.2.0`

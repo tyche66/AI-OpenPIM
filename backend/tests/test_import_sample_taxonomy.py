@@ -1,4 +1,4 @@
-"""Tests for app/scripts/import_sample_taxonomy.py.
+"""Tests for app/scripts/import_pilot_taxonomy.py.
 
 Pure unit tests for normalization/validation (no DB).
 AsyncMock-based tests for the DB upsert layer.
@@ -14,7 +14,7 @@ import pytest
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_BACKEND_ROOT))
 
-from app.scripts.import_sample_taxonomy import (  # noqa: E402
+from app.scripts.import_pilot_taxonomy import (  # noqa: E402
     SUPPLIER_NAME,
     TAG_TYPE_SERIES,
     TaxonomyValidationError,
@@ -216,9 +216,9 @@ class TestImportTaxonomy:
             return MagicMock(id=MagicMock(), tag_name=name, tag_type=tag_type), True
 
         with (
-            patch("app.scripts.import_sample_taxonomy._get_or_create_supplier", fake_get_supplier),
-            patch("app.scripts.import_sample_taxonomy._get_or_create_category", fake_get_cat),
-            patch("app.scripts.import_sample_taxonomy._get_or_create_tag", fake_get_tag),
+            patch("app.scripts.import_pilot_taxonomy._get_or_create_supplier", fake_get_supplier),
+            patch("app.scripts.import_pilot_taxonomy._get_or_create_category", fake_get_cat),
+            patch("app.scripts.import_pilot_taxonomy._get_or_create_tag", fake_get_tag),
         ):
             counts = await import_taxonomy(mock_db, data)
 
@@ -251,9 +251,9 @@ class TestImportTaxonomy:
             return MagicMock(), False
 
         with (
-            patch("app.scripts.import_sample_taxonomy._get_or_create_supplier", fake_get_supplier),
-            patch("app.scripts.import_sample_taxonomy._get_or_create_category", fake_get_cat),
-            patch("app.scripts.import_sample_taxonomy._get_or_create_tag", fake_get_tag),
+            patch("app.scripts.import_pilot_taxonomy._get_or_create_supplier", fake_get_supplier),
+            patch("app.scripts.import_pilot_taxonomy._get_or_create_category", fake_get_cat),
+            patch("app.scripts.import_pilot_taxonomy._get_or_create_tag", fake_get_tag),
         ):
             counts = await import_taxonomy(mock_db, data)
 
@@ -273,7 +273,7 @@ class TestImportTaxonomy:
         async def fake_get_supplier(db):
             return MagicMock(), False
 
-        with patch("app.scripts.import_sample_taxonomy._get_or_create_supplier", fake_get_supplier):
+        with patch("app.scripts.import_pilot_taxonomy._get_or_create_supplier", fake_get_supplier):
             counts = await import_taxonomy(mock_db, data)
 
         assert counts["categories_l1_created"] == 0

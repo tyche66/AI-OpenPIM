@@ -1,8 +1,8 @@
-# RiChangPIM 项目管理
+# openPIM 项目管理
 
 ## 项目概览
 
-- **项目名称**: RiChangPIM (日常PIM)
+- **项目名称**: openPIM (日常PIM)
 - **项目类型**: AI 驱动的企业级产品信息管理平台
 - **技术栈**: Vue3 + FastAPI + PostgreSQL + Redis + MinIO
 - **构建方式**: Docker Compose 容器化
@@ -24,7 +24,7 @@
 ### V1.1 - 内部试点首发 ✅ GO
 
 - 25/25 production regression PASS（详见 docs/v1.1-verification.md）
-- 13 条示例试点产品 + 待核价占位 + OCR 解析状态 + 字段级 RBAC + 备份脚本与恢复演练
+- 13 条铭达试点产品 + 待核价占位 + OCR 解析状态 + 字段级 RBAC + 备份脚本与恢复演练
 - AI/OCR 默认 fail-closed (AI_ADAPTER=none / OCR_ADAPTER=none)
 
 ### V1.2 - 内部试点运营加固（当前阶段，唯一基线 = docs/v1.2-plan.md）
@@ -111,7 +111,7 @@
 | Frontend tests | `npm run test` | 36 passed |
 | Frontend build | `npm run build` | PASS，产物在 `frontend/dist` |
 | Compose config | `docker compose -f docker-compose.yml config --quiet` | PASS，仅 `version` obsolete warning |
-| Backend image | `docker compose build backend` | PASS，`richangpim-backend:latest` |
+| Backend image | `docker compose build backend` | PASS，`openpim-backend:latest` |
 | Compose runtime | `docker compose up -d postgres redis minio gotenberg backend nginx` | PASS，六服务全部健康 |
 | Runtime frontend | `curl -I http://localhost/` | PASS，200 |
 | Runtime H5 SPA | `curl -I http://localhost/share/test-token` | PASS，200 |
@@ -180,7 +180,7 @@ docker compose up -d backend
 
 ## 相关链接
 
-- 项目文档: `/home/AI-PIM/docs/`
+- 项目文档: `/home/AI-openPIM/docs/`
 - API 文档: http://localhost/docs
 - 前端: http://localhost
 - 后端: http://localhost:8000

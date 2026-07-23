@@ -2,7 +2,7 @@
 # 幂等创建集成测试库 ai_pim_test（供 pytest 的 TEST_DATABASE_URL 使用）。
 #
 # 设计（与 db_backup.sh / db_restore.sh 一致）：
-# - 全部参数经环境变量覆盖，无硬编码密钥；路径相对项目根（AI-PIM/）。
+# - 全部参数经环境变量覆盖，无硬编码密钥；路径相对项目根（AI-openPIM/）。
 # - 优先用宿主机 psql（POSTGRES_HOST 可覆盖）；若设 DOCKER=1 或宿主机无
 #   psql，则经 postgres 容器执行（容器自带客户端）。
 # - 数据随 ./docker/volumes/postgres 留在项目目录内。

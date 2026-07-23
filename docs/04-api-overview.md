@@ -227,7 +227,7 @@
 {
   "code": 200,
   "data": {
-    "app_name": "AI-PIM",
+    "app_name": "AI-openPIM",
     "backend_version": "1.2.0",
     "frontend_version": "1.2.0",
     "build_id": "1.2.0-abc1234",

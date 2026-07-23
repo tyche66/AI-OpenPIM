@@ -4,7 +4,7 @@
       <section class="brand-panel">
         <div class="brand-lockup">
           <span class="brand-mark">AI</span>
-          <span>AI-PIM</span>
+          <span>AI-openPIM</span>
         </div>
         <div class="hero-copy">
           <span class="hero-badge">PRODUCT INTELLIGENCE WORKSPACE</span>
@@ -23,7 +23,7 @@
         <div class="form-heading">
           <span class="form-kicker">WELCOME BACK</span>
           <h2>
-            AI-PIM 产品信息管理平台
+            AI-openPIM 产品信息管理平台
           </h2>
           <p>使用组织账号继续访问产品信息空间</p>
         </div>

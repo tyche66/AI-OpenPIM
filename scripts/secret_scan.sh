@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI-PIM V1.2 secret scan — fail-closed release gate.
+# AI-openPIM V1.2 secret scan — fail-closed release gate.
 #
 # Scans the repository for patterns that MUST NEVER be committed:
 #   - JWT / Bearer tokens

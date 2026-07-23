@@ -15,7 +15,7 @@ from app.models.sales import Proposal, ProposalItem
 from app.schemas.ai import AIStatus, PolishRequest
 
 SYSTEM_PROMPT = (
-    "你是 AI-PIM 方案的润色助手。基于销售勾选的产品列表（包含名称、面价、参数），"
+    "你是 AI-openPIM 方案的润色助手。基于销售勾选的产品列表（包含名称、面价、参数），"
     '生成 JSON：{"summary": "<≤200字整体亮点>", "item_reasons": ["<≤60字/产品>", ...], '
     '"industry_phrases": ["<3条行业话术>", ...]}。严禁编造价格、库存或供应商。'
     '只返回 summary、item_reasons、industry_phrases 三个字段，不要包含客户信息、成本或供应商。'

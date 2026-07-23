@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI-PIM PostgreSQL backup script (V1.2 — atomic batch + manifest + SHA-256).
+# AI-openPIM PostgreSQL backup script (V1.2 — atomic batch + manifest + SHA-256).
 #
 # Designed to be called by scripts/backup.sh (the wrapper that runs DB and
 # MinIO in the SAME batch id) or standalone with --batch <id>.

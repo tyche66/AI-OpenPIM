@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI-PIM MinIO bucket backup script (V1.2 — atomic batch + manifest + SHA-256).
+# AI-openPIM MinIO bucket backup script (V1.2 — atomic batch + manifest + SHA-256).
 #
 # Pair with scripts/db_backup.sh — the wrapper scripts/backup.sh supplies the
 # SAME --batch id to both so the manifest for one backup batch groups the

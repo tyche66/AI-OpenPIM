@@ -296,7 +296,9 @@ async function handleUploaded(item: MediaItem) {
   }
 }
 
-async function handlePickerSelect(item: MediaItem) {
+async function handlePickerSelect(payload: MediaItem | MediaItem[]) {
+  const item = Array.isArray(payload) ? payload[0] : payload
+  if (!item) return
   if (localImages.value.length >= MAX_IMAGES) {
     ElMessage.warning(`产品图片最多 ${MAX_IMAGES} 张`)
     return

@@ -20,7 +20,7 @@
           class="picker-search"
         />
         <el-select
-          v-model="localTypeFilter"
+          v-model="typeFilter"
           placeholder="类型筛选"
           class="picker-filter"
         >
@@ -66,8 +66,8 @@
           v-for="item in filteredItems"
           :key="item.id"
           class="picker-card"
-          :class="{ 'is-selected': selectedId === item.id }"
-          @click="selectedId = item.id"
+          :class="{ 'is-selected': selectedIds.includes(item.id) }"
+          @click="toggleSelect(item.id)"
           @dblclick="confirm"
         >
           <div class="picker-thumb">
@@ -93,7 +93,7 @@
             </p>
           </div>
           <div
-            v-if="selectedId === item.id"
+            v-if="selectedIds.includes(item.id)"
             class="picker-check"
           >
             <el-icon
@@ -108,12 +108,13 @@
     </div>
 
     <template #footer>
+      <span class="picker-selection-count">已选择 {{ selectedIds.length }} 项</span>
       <el-button @click="emit('update:modelValue', false)">
         取消
       </el-button>
       <el-button
         type="primary"
-        :disabled="!selectedId"
+        :disabled="selectedIds.length === 0"
         @click="confirm"
       >
         确认选择
@@ -131,23 +132,24 @@ import type { MediaItem } from '@/api/media'
 const props = defineProps<{
   modelValue: boolean
   typeFilter?: string
+  multiple?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [val: boolean]
-  select: [item: MediaItem]
+  select: [item: MediaItem | MediaItem[]]
 }>()
 
 const searchQuery = ref('')
-const localTypeFilter = ref('all')
+const typeFilter = ref('all')
 const loading = ref(false)
 const items = ref<MediaItem[]>([])
-const selectedId = ref<string | null>(null)
+const selectedIds = ref<string[]>([])
 
 watch(
   () => props.typeFilter,
   (val) => {
-    if (val) localTypeFilter.value = val
+    if (val) typeFilter.value = val
   },
   { immediate: true }
 )
@@ -155,7 +157,7 @@ watch(
 const filteredItems = computed(() =>
   items.value.filter((item) => {
     const matchSearch = item.name.toLowerCase().includes(searchQuery.value.toLowerCase())
-    const matchType = localTypeFilter.value === 'all' || item.type === localTypeFilter.value
+    const matchType = typeFilter.value === 'all' || item.type === typeFilter.value
     return matchSearch && matchType
   })
 )
@@ -163,31 +165,43 @@ const filteredItems = computed(() =>
 async function fetchItems() {
   loading.value = true
   try {
-    items.value = await mediaApi.list({ search: searchQuery.value, type: localTypeFilter.value })
+    items.value = await mediaApi.list({ search: searchQuery.value, type: typeFilter.value })
   } finally {
     loading.value = false
   }
 }
 
-watch([searchQuery, localTypeFilter], fetchItems)
+watch([searchQuery, typeFilter], fetchItems)
 
 watch(
   () => props.modelValue,
   (val) => {
     if (val) {
-      selectedId.value = null
+      selectedIds.value = []
       fetchItems()
     }
   }
 )
 
+function toggleSelect(id: string) {
+  if (!props.multiple) {
+    selectedIds.value = [id]
+    return
+  }
+  const idx = selectedIds.value.indexOf(id)
+  if (idx >= 0) selectedIds.value.splice(idx, 1)
+  else selectedIds.value.push(id)
+}
+
 function confirm() {
-  const item = items.value.find((i) => i.id === selectedId.value)
-  if (item) {
-    emit('select', item)
+  const selectedItems = items.value.filter((i) => selectedIds.value.includes(i.id))
+  if (selectedItems.length > 0) {
+    emit('select', props.multiple ? selectedItems : selectedItems[0])
     emit('update:modelValue', false)
   }
 }
+
+defineExpose({ items, selectedIds, confirm })
 </script>
 
 <style scoped>
@@ -206,6 +220,11 @@ function confirm() {
 }
 .picker-filter {
   width: 140px;
+}
+.picker-selection-count {
+  margin-right: auto;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
 }
 .picker-loading,
 .picker-empty {

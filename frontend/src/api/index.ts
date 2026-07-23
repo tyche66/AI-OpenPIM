@@ -1,5 +1,18 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
+import type {
+  ApiEnvelope,
+  Paginated,
+  ProductListItem,
+  Proposal,
+  ProposalCreateRequest,
+  ProposalUpdateRequest,
+  Quotation,
+  QuotationCreateRequest,
+  QuotationUpdateRequest,
+  ShareCreateRequest,
+  ShareResult,
+} from '@/types/sales'
 
 const api = axios.create({
   baseURL: '/api/v1',
@@ -170,8 +183,17 @@ export const authApi = {
     api.post('/auth/change-password', null, { params: { old_password: oldPassword, new_password: newPassword } }),
 }
 
+export interface ProductListParams {
+  keyword?: string
+  status?: string
+  stock_status?: string
+  page?: number
+  size?: number
+}
+
 export const productApi = {
-  list: (params?: Record<string, unknown>) => api.get('/products', { params }),
+  list: (params?: ProductListParams) =>
+    api.get('/products', { params }) as Promise<ApiEnvelope<Paginated<ProductListItem>>>,
   get: (id: string) => api.get(`/products/${id}`, { suppressErrorMessage: true }),
   create: (data: unknown) => api.post('/products', data),
   update: (id: string, data: unknown) => api.put(`/products/${id}`, data),
@@ -231,26 +253,78 @@ export const tagApi = {
   delete: (id: string) => api.delete(`/tags/${id}`),
 }
 
+export interface ProposalListParams {
+  keyword?: string
+  status?: string
+  page?: number
+  size?: number
+}
+
+/**
+ * Normalizes proposal API responses for forward/backward compatibility.
+ *
+ * The new backend wraps every proposal response in ``{ code, data }``.
+ * The old running backend may return the bare ``Proposal`` object directly.
+ * ``normalizeProposalEnvelope`` detects the shape and returns a typed
+ * ``ApiEnvelope<Proposal>`` in all cases, without using ``any``.
+ */
+type ProposalEnvelopeOrBare =
+  | { code: number; data: Proposal; msg?: string }
+  | (Omit<Proposal, 'items'> & { items: unknown })
+
+function _isProposalEnvelope(v: ProposalEnvelopeOrBare): v is { code: number; data: Proposal; msg?: string } {
+  return 'code' in v && typeof v.code === 'number' && 'data' in v
+}
+
+function normalizeProposalEnvelope(p: Promise<ProposalEnvelopeOrBare>): Promise<ApiEnvelope<Proposal>> {
+  return p.then((res) => {
+    if (_isProposalEnvelope(res)) {
+      return res
+    }
+    return { code: 200, data: res as Proposal }
+  })
+}
+
+export interface QuotationListParams {
+  proposal_id?: string
+  status?: string
+  page?: number
+  size?: number
+}
+
 export const proposalApi = {
-  list: (params?: Record<string, unknown>) => api.get('/proposals', { params }),
-  get: (id: string) => api.get(`/proposals/${id}`),
-  create: (data: unknown) => api.post('/proposals', data),
-  update: (id: string, data: unknown) => api.put(`/proposals/${id}`, data),
+  list: (params?: ProposalListParams) =>
+    api.get('/proposals', { params }) as Promise<ApiEnvelope<Paginated<Proposal>>>,
+  get: (id: string) => normalizeProposalEnvelope(
+    api.get(`/proposals/${id}`) as Promise<ApiEnvelope<Proposal>>,
+  ),
+  create: (data: ProposalCreateRequest) => normalizeProposalEnvelope(
+    api.post('/proposals', data) as Promise<ApiEnvelope<Proposal>>,
+  ),
+  update: (id: string, data: ProposalUpdateRequest) => normalizeProposalEnvelope(
+    api.put(`/proposals/${id}`, data) as Promise<ApiEnvelope<Proposal>>,
+  ),
   delete: (id: string) => api.delete(`/proposals/${id}`),
+  confirm: (id: string) => api.post(`/proposals/${id}/confirm`),
+  revertConfirmation: (id: string) => normalizeProposalEnvelope(
+    api.post(`/proposals/${id}/revert-confirmation`) as Promise<ApiEnvelope<Proposal>>,
+  ),
 }
 
 export const quotationApi = {
-  list: (params?: Record<string, unknown>) => api.get('/quotations', { params }),
-  get: (id: string) => api.get(`/quotations/${id}`),
-  create: (data: unknown) => api.post('/quotations', data),
-  update: (id: string, data: unknown) => api.put(`/quotations/${id}`, data),
+  list: (params?: QuotationListParams) =>
+    api.get('/quotations', { params }) as Promise<ApiEnvelope<Paginated<Quotation>>>,
+  get: (id: string) => api.get(`/quotations/${id}`) as Promise<ApiEnvelope<Quotation>>,
+  create: (data: QuotationCreateRequest) => api.post('/quotations', data) as Promise<ApiEnvelope<Quotation>>,
+  update: (id: string, data: QuotationUpdateRequest) => api.put(`/quotations/${id}`, data) as Promise<ApiEnvelope<Quotation>>,
   exportPdf: (id: string) =>
     api.get(`/quotations/${id}/pdf`, { responseType: 'blob' }) as unknown as Promise<Blob>,
+  confirm: (id: string) => api.post(`/quotations/${id}/confirm`),
 }
 
 export const shareApi = {
-  create: (data: unknown) => api.post('/shares', data),
-  list: () => api.get('/shares'),
+  create: (data: ShareCreateRequest) => api.post('/shares', data) as Promise<ApiEnvelope<ShareResult>>,
+  list: () => api.get('/shares') as Promise<{ data: { list: { id: string; share_type: 'proposal' | 'quotation'; target_id: string; creator_id: string; status: 'active' | 'disabled' | 'expired'; create_time: string | null }[] } }>,
   get: (token: string, password?: string) =>
     api.get(`/share/${token}`, { skipAuth: true, params: password ? { password } : {} }),
   revoke: (id: string) => api.delete(`/shares/${id}`),

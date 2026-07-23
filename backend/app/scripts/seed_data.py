@@ -88,17 +88,13 @@ PERMISSIONS = [
     ("file:view", "文件查看", "file", "view", "read"),
     ("file:upload", "文件上传", "file", "upload", "write"),
     ("file:delete", "文件删除", "file", "delete", "write"),
-    ("stats:view", "统计查看", "stats", "view", "read"),
-    ("audit:view", "审计日志查看", "audit", "view", "read"),
-    ("ai:use", "AI 能力使用", "ai", "use", "write"),
     ("media:view", "媒体库查看", "media", "view", "read"),
     ("media:upload", "媒体库上传", "media", "upload", "write"),
     ("media:delete", "媒体库删除", "media", "delete", "write"),
     ("media:replace", "媒体库替换", "media", "replace", "write"),
-    ("scene_image:view", "场景图查看", "scene_image", "view", "read"),
-    ("scene_image:create", "场景图新增", "scene_image", "create", "write"),
-    ("scene_image:edit", "场景图编辑", "scene_image", "edit", "write"),
-    ("scene_image:delete", "场景图删除", "scene_image", "delete", "write"),
+    ("stats:view", "统计查看", "stats", "view", "read"),
+    ("audit:view", "审计日志查看", "audit", "view", "read"),
+    ("ai:use", "AI 能力使用", "ai", "use", "write"),
 ]
 
 # 角色 -> 权限映射；"*" 表示全部权限点
@@ -326,7 +322,7 @@ async def seed(check_only: bool, with_admin: bool):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="AI-PIM 装后种子数据脚本")
+    parser = argparse.ArgumentParser(description="AI-openPIM 装后种子数据脚本")
     parser.add_argument("--check", action="store_true", help="仅校验缺失项，不写入")
     parser.add_argument("--no-admin", action="store_true", help="不创建 admin 用户")
     args = parser.parse_args()

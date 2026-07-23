@@ -145,8 +145,8 @@ class TestRealParsers:
     @pytest.mark.anyio
     async def test_docx_extracts_real_text(self):
         parser = DocxTextParser()
-        result = await parser.parse(_make_docx_bytes("RiChangPIM DOCX fixture"), file_name="a.docx")
-        assert "RiChangPIM DOCX fixture" in result.text
+        result = await parser.parse(_make_docx_bytes("openPIM DOCX fixture"), file_name="a.docx")
+        assert "openPIM DOCX fixture" in result.text
         assert result.parser_name == "python-docx"
         assert result.content_hash == hashlib.sha256(result.text.encode("utf-8")).hexdigest()
 
@@ -154,9 +154,9 @@ class TestRealParsers:
     async def test_pdf_extracts_real_text(self):
         parser = PdfTextParser()
         result = await parser.parse(
-            _make_text_pdf_bytes("RiChangPIM PDF fixture"), file_name="a.pdf"
+            _make_text_pdf_bytes("openPIM PDF fixture"), file_name="a.pdf"
         )
-        assert "RiChangPIM PDF fixture" in result.text
+        assert "openPIM PDF fixture" in result.text
         assert result.page_count == 1
         assert result.parser_name == "pypdf"
 

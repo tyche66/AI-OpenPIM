@@ -1,12 +1,12 @@
 # docs/03 — 数据模型 / ERD（实体关系图）
 
-> 本文档为 **AI-PIM MVP（阶段①~③）已交付** 的权威数据模型说明，依据实际 ORM
-> （`backend/app/models/*`）与 Alembic migration（`0001_initial` → `0009_sample_pilot_product_fields`）
+> 本文档为 **AI-openPIM MVP（阶段①~③）已交付** 的权威数据模型说明，依据实际 ORM
+> （`backend/app/models/*`）与 Alembic migration（`0001_initial` → `0009_pilot_product_fields`）
 > 逐表核对生成，**仅描述已实现行为，不虚构表/字段**。
 >
 > 源依据：
 > - ORM：`app/models/base.py`、`product.py`、`sales.py`、`audit.py`、`user.py`、`doc_chunk.py`
-> - Migration：`alembic/versions/0001_initial.py` → `0009_sample_pilot_product_fields.py`
+> - Migration：`alembic/versions/0001_initial.py` → `0009_pilot_product_fields.py`
 > - 通用基类 `CommonBase` 为所有业务表提供：`id`（PK, UUID）、`create_time`、
 >   `update_time`（`BEFORE UPDATE` 触发器维护）、`deleted_at`（软删除时间）、
 >   `is_deleted`（布尔软删除标记，默认 `false`）。

@@ -2,7 +2,7 @@
   <div class="share-page">
     <div class="share-brand-header">
       <div class="brand-logo">
-        AI-PIM
+        AI-openPIM
       </div>
       <div class="brand-subtitle">
         产品信息共享平台
@@ -65,7 +65,7 @@
 
       <!-- Content -->
       <div
-        v-if="content"
+        v-if="proposalContent || quotationContent"
         class="share-content"
       >
         <!-- Proposal content -->
@@ -79,16 +79,22 @@
               border
               class="info-descriptions"
             >
+              <el-descriptions-item label="方案编号">
+                <span class="mono-text">{{ proposalContent?.proposal_no || '-' }}</span>
+              </el-descriptions-item>
               <el-descriptions-item label="方案名称">
-                {{ content.proposal_name }}
+                {{ proposalContent?.proposal_name || '-' }}
               </el-descriptions-item>
               <el-descriptions-item label="客户名称">
-                {{ content.customer_name || '-' }}
+                {{ proposalContent?.customer_name || '-' }}
               </el-descriptions-item>
               <el-descriptions-item label="状态">
-                <el-tag :type="content.status === 'confirmed' ? 'success' : 'info'">
-                  {{ content.status }}
+                <el-tag :type="proposalContent?.status === 'confirmed' ? 'success' : 'info'" class="capsule-tag">
+                  {{ statusMap[proposalContent?.status || ''] || proposalContent?.status }}
                 </el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="总面价">
+                <span class="price-text">¥{{ formatCNY(proposalContent?.total_face_value) }}</span>
               </el-descriptions-item>
             </el-descriptions>
           </div>
@@ -99,7 +105,7 @@
             </h3>
             <div class="table-responsive">
               <el-table
-                :data="content.items"
+                :data="proposalContent?.items || []"
                 border
                 stripe
                 class="share-table"
@@ -122,16 +128,19 @@
                           class="thumb-placeholder"
                         >{{ getPlaceholderText(row.product_name) }}</span>
                       </div>
-                      <span class="product-name-text">{{ row.product_name }}</span>
+                      <div class="product-info-text">
+                        <span class="product-name-text">{{ row.product_name || '-' }}</span>
+                        <span class="product-no-text">{{ row.product_no || '-' }}</span>
+                      </div>
                     </div>
                   </template>
                 </el-table-column>
                 <el-table-column
-                  prop="face_price"
                   label="面价"
+                  align="right"
                 >
                   <template #default="{ row }">
-                    <span class="price-text">¥{{ row.face_price?.toFixed(2) }}</span>
+                    <span class="price-text">¥{{ formatCNY(row.face_price) }}</span>
                   </template>
                 </el-table-column>
                 <el-table-column
@@ -140,6 +149,14 @@
                   width="80"
                   align="center"
                 />
+                <el-table-column
+                  label="行合计"
+                  align="right"
+                >
+                  <template #default="{ row }">
+                    <span class="row-subtotal">¥{{ formatCNY(row.face_price ? row.face_price * row.quantity : 0) }}</span>
+                  </template>
+                </el-table-column>
               </el-table>
             </div>
           </div>
@@ -157,15 +174,15 @@
               class="info-descriptions"
             >
               <el-descriptions-item label="报价单号">
-                {{ content.quotation_no }}
+                <span class="mono-text">{{ quotationContent?.quotation_no || '-' }}</span>
               </el-descriptions-item>
               <el-descriptions-item label="状态">
-                <el-tag :type="content.status === 'confirmed' ? 'success' : 'info'">
-                  {{ content.status }}
+                <el-tag :type="quotationContent?.status === 'confirmed' ? 'success' : 'info'" class="capsule-tag">
+                  {{ statusMap[quotationContent?.status || ''] || quotationContent?.status }}
                 </el-tag>
               </el-descriptions-item>
               <el-descriptions-item label="总金额">
-                <span class="total-amount">¥{{ content.total_amount?.toFixed(2) }}</span>
+                <span class="total-amount">¥{{ formatCNY(quotationContent?.total_amount) }}</span>
               </el-descriptions-item>
             </el-descriptions>
           </div>
@@ -176,7 +193,7 @@
             </h3>
             <div class="table-responsive">
               <el-table
-                :data="content.items"
+                :data="quotationContent?.items || []"
                 border
                 stripe
                 class="share-table"
@@ -199,24 +216,27 @@
                           class="thumb-placeholder"
                         >{{ getPlaceholderText(row.product_name) }}</span>
                       </div>
-                      <span class="product-name-text">{{ row.product_name }}</span>
+                      <div class="product-info-text">
+                        <span class="product-name-text">{{ row.product_name || '-' }}</span>
+                        <span class="product-no-text">{{ row.product_no || '-' }}</span>
+                      </div>
                     </div>
                   </template>
                 </el-table-column>
                 <el-table-column
-                  prop="face_price"
                   label="面价"
+                  align="right"
                 >
                   <template #default="{ row }">
-                    <span class="price-text">¥{{ row.face_price?.toFixed(2) }}</span>
+                    <span class="price-text">¥{{ formatCNY(row.face_price) }}</span>
                   </template>
                 </el-table-column>
                 <el-table-column
-                  prop="unit_price"
                   label="单价"
+                  align="right"
                 >
                   <template #default="{ row }">
-                    <span class="price-text">¥{{ row.unit_price?.toFixed(2) }}</span>
+                    <span class="price-text">¥{{ formatCNY(row.unit_price) }}</span>
                   </template>
                 </el-table-column>
                 <el-table-column
@@ -225,6 +245,30 @@
                   width="80"
                   align="center"
                 />
+                <el-table-column
+                  label="税率"
+                  align="center"
+                >
+                  <template #default="{ row }">
+                    {{ row.tax_rate !== undefined ? (row.tax_rate * 100).toFixed(0) + '%' : '-' }}
+                  </template>
+                </el-table-column>
+                <el-table-column
+                  label="未税小计"
+                  align="right"
+                >
+                  <template #default="{ row }">
+                    <span class="subtotal-text">¥{{ formatCNY(row.subtotal) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column
+                  label="含税小计"
+                  align="right"
+                >
+                  <template #default="{ row }">
+                    <span class="subtotal-text">¥{{ formatCNY(row.unit_price ? row.unit_price * row.quantity * (1 + (row.tax_rate ?? 0)) : 0) }}</span>
+                  </template>
+                </el-table-column>
               </el-table>
             </div>
           </div>
@@ -236,7 +280,7 @@
             访问次数: <strong>{{ shareData.access_count }}</strong>
           </p>
           <p class="footer-brand">
-            由 <strong>AI-PIM</strong> 提供技术支持
+            由 <strong>AI-openPIM</strong> 提供技术支持
           </p>
         </div>
       </div>
@@ -255,6 +299,8 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { shareApi } from '@/api'
 import ProductSceneCarousel from '@/components/ProductSceneCarousel.vue'
+import type { ShareContent, ShareProductItem, ShareProposalContent, ShareQuotationContent } from '@/types/sales'
+import type { AxiosError } from 'axios'
 
 const route = useRoute()
 const token = route.params.token as string
@@ -266,23 +312,29 @@ const accessResult = ref('')
 const errorMessage = ref('分享链接无效或已过期')
 
 const shareData = reactive({
-  share_type: '',
+  share_type: '' as 'proposal' | 'quotation' | '',
   target_id: '',
   access_count: 0,
 })
-const content = ref<any>(null)
+
+const proposalContent = ref<ShareProposalContent | null>(null)
+const quotationContent = ref<ShareQuotationContent | null>(null)
 
 const sceneCarouselVisible = ref(false)
-const currentSceneImages = ref<any[]>([])
+const currentSceneImages = ref<Array<{ name?: string; image_url: string }>>([])
 
-const handleRowClick = (row: any) => {
+const statusMap: Record<string, string> = { draft: '草稿', confirmed: '已确认' }
+
+const handleRowClick = (row: ShareProductItem) => {
   if (row.scene_images && row.scene_images.length > 0) {
     currentSceneImages.value = row.scene_images
+      .filter((image): image is typeof image & { image_url: string } => Boolean(image.image_url))
+      .map((image) => ({ name: image.name, image_url: image.image_url }))
     sceneCarouselVisible.value = true
   }
 }
 
-const getPlaceholderText = (name: string): string => {
+const getPlaceholderText = (name: string | undefined): string => {
   if (!name) return '无图'
   const match = name.match(/^[\u4e00-\u9fff]+/)
   if (match) {
@@ -291,24 +343,40 @@ const getPlaceholderText = (name: string): string => {
   return name.slice(0, 4)
 }
 
-const onImgError = (row: any) => {
+const onImgError = (row: ShareProductItem) => {
   row._imgError = true
+}
+
+// Format CNY with null/undefined fallback to '-'
+const formatCNY = (value: number | null | undefined | string): string => {
+  if (value === null || value === undefined || value === '') return '-'
+  const num = typeof value === 'string' ? parseFloat(value) : value
+  if (isNaN(num) || num === null) return '-'
+  return num.toFixed(2)
 }
 
 const fetchContent = async () => {
   loading.value = true
   try {
-    const res = await shareApi.get(token, passwordInput.value || undefined) as any
+    const res = await shareApi.get(token, passwordInput.value || undefined) as { data?: { share_type: string; target_id: string; access_count: number; content: ShareContent } }
     const data = res.data
-    shareData.share_type = data.share_type
+    if (!data) return
+    shareData.share_type = data.share_type as 'proposal' | 'quotation'
     shareData.target_id = data.target_id
     shareData.access_count = data.access_count
-    content.value = data.content
+    if (data.share_type === 'proposal') {
+      proposalContent.value = data.content as ShareProposalContent
+      quotationContent.value = null
+    } else {
+      quotationContent.value = data.content as ShareQuotationContent
+      proposalContent.value = null
+    }
     accessResult.value = 'success'
     needPassword.value = false
-  } catch (e: any) {
-    const code = e?.response?.data?.detail?.code
-    const msg = e?.response?.data?.detail?.msg
+  } catch (error: unknown) {
+    const e = error as AxiosError<{ detail?: { code?: number; msg?: string } }>
+    const code = e.response?.data?.detail?.code
+    const msg = e.response?.data?.detail?.msg
     if (code === 40304) {
       needPassword.value = true
       accessResult.value = 'denied_password'
@@ -451,10 +519,28 @@ onMounted(() => {
   border-radius: 16px;
 }
 
+.mono-text {
+  font-family: monospace;
+  font-size: 12px;
+  color: #5E6470;
+}
+
 .price-text {
   font-weight: 600;
   color: rgb(30, 50, 90);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.row-subtotal {
+  font-family: monospace;
+  color: rgb(30, 50, 90);
+  font-weight: 600;
+}
+
+.subtotal-text {
+  font-family: monospace;
+  color: rgb(30, 50, 90);
+  font-weight: 600;
 }
 
 .total-amount {
@@ -464,6 +550,12 @@ onMounted(() => {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
+.capsule-tag {
+  border-radius: 12px;
+  padding: 2px 10px;
+  font-weight: 500;
+}
+
 .table-responsive {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -471,9 +563,10 @@ onMounted(() => {
 }
 
 .share-table {
-  min-width: 500px;
+  min-width: 600px;
   border-radius: 12px;
   overflow: hidden;
+  cursor: pointer;
 }
 
 .share-footer {
@@ -590,13 +683,25 @@ onMounted(() => {
   word-break: keep-all;
 }
 
+.product-info-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .product-name-text {
   font-size: 14px;
   color: rgb(30, 50, 90);
   line-height: 1.4;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.share-table {
-  cursor: pointer;
+.product-no-text {
+  font-size: 11px;
+  color: #999;
+  font-family: monospace;
 }
 </style>

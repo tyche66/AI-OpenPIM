@@ -40,7 +40,7 @@ test.describe('Public Share Page Access', () => {
     await expect(page.getByText('洁面泡沫')).toBeVisible()
     await expect(page.getByText('爽肤水')).toBeVisible()
     await expect(page.getByText(/访问次数: 5/)).toBeVisible()
-    await expect(page.getByText('AI-PIM 提供技术支持')).toBeVisible()
+    await expect(page.getByText('AI-openPIM 提供技术支持')).toBeVisible()
   })
 
   test('does NOT display sensitive fields on share page', async ({ page }) => {

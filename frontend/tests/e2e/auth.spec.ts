@@ -19,7 +19,7 @@ async function mockCurrentUser(page: any, options: { status?: number; body?: any
 
 async function loginViaUI(page: any, username = 'admin', password = 'admin123') {
   await page.goto('/login')
-  await expect(page.getByRole('heading', { name: 'AI-PIM' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'AI-openPIM' })).toBeVisible()
   await page.getByPlaceholder('用户名').fill(username)
   await page.getByPlaceholder('密码').fill(password)
   await page.getByRole('button', { name: '登录' }).click()
@@ -34,7 +34,7 @@ test.describe('Admin Login UI', () => {
   test('shows login form with required fields', async ({ page }) => {
     await page.goto('/login')
 
-    await expect(page.getByRole('heading', { name: 'AI-PIM 产品信息管理平台' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'AI-openPIM 产品信息管理平台' })).toBeVisible()
     await expect(page.getByPlaceholder('用户名')).toBeVisible()
     await expect(page.getByPlaceholder('密码')).toBeVisible()
     await expect(page.getByRole('button', { name: '登录' })).toBeVisible()

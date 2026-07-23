@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI-PIM V1.2 unified backup wrapper.
+# AI-openPIM V1.2 unified backup wrapper.
 #
 # Runs scripts/db_backup.sh and scripts/minio_backup.sh with the SAME
 # batch id, then writes a non-secret last_status.json consumed by

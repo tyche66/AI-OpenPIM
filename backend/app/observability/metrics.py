@@ -283,7 +283,28 @@ __all__ = [
     "inc_ocr_request",
     "observe_http_request",
     "render_text",
+    "reset",
     "set_backup_status",
     "set_db_pool",
     "set_volume_free",
 ]
+
+
+def reset() -> None:
+    """Clear all metrics state. Intended for test isolation only.
+
+    Resets every module-level counter/gauge/histogram singleton so that
+    subsequent ``render_text()`` calls start from an empty baseline.
+    """
+    _http_requests_total.values.clear()
+    _http_request_duration_seconds.counts = {ub: 0 for ub in _http_request_duration_seconds.buckets}
+    _http_request_duration_seconds.sums = 0.0
+    _db_pool_in_use.values.clear()
+    _db_pool_available.values.clear()
+    _ai_requests_total.values.clear()
+    _ocr_requests_total.values.clear()
+    _backup_last_success_timestamp.values.clear()
+    _backup_last_failure_timestamp.values.clear()
+    _backup_status.values.clear()
+    _volume_free_bytes.values.clear()
+    _volume_threshold_bytes.values.clear()
