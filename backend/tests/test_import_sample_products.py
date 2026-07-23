@@ -1,6 +1,6 @@
 import pytest
 
-from app.scripts.import_pilot_products import validate_records
+from app.scripts.import_sample_products import validate_records
 
 
 def _record():

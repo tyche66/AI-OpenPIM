@@ -44,8 +44,8 @@ async def create_share(
     # creator_id 必须从登录态令牌中获取，禁止信任客户端传入。
     try:
         creator_id = UUID(current_user["sub"])
-    except (KeyError, ValueError):
-        raise HTTPException(status_code=401, detail={"code": 40103, "msg": "当前用户身份无效"})
+    except (KeyError, ValueError) as err:
+        raise HTTPException(status_code=401, detail={"code": 40103, "msg": "当前用户身份无效"}) from err
 
     # 验证 target 真实未删除
     if share_data.share_type == "proposal":

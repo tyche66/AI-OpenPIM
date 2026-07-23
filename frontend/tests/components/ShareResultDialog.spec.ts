@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { compileScript } from '@vue/language-core'
 import ShareResultDialog from '@/components/ShareResultDialog.vue'
 
 describe('ShareResultDialog.vue', () => {
@@ -14,8 +13,10 @@ describe('ShareResultDialog.vue', () => {
 
   it('template contains share-url-input class', () => {
     // Read the source file to verify template content
-    const fs = require('fs')
-    const path = require('path')
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const fs = require("fs")
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const path = require("path")
     const filePath = path.resolve(__dirname, '../../src/components/ShareResultDialog.vue')
     const source = fs.readFileSync(filePath, 'utf-8')
     expect(source).toContain('share-url-input')
@@ -31,7 +32,9 @@ describe('ShareResultDialog.vue', () => {
   })
 
   it('template contains QR code generation', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const fs = require('fs')
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const path = require('path')
     const filePath = path.resolve(__dirname, '../../src/components/ShareResultDialog.vue')
     const source = fs.readFileSync(filePath, 'utf-8')
@@ -40,7 +43,9 @@ describe('ShareResultDialog.vue', () => {
   })
 
   it('template contains absolute URL resolution logic', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const fs = require('fs')
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const path = require('path')
     const filePath = path.resolve(__dirname, '../../src/components/ShareResultDialog.vue')
     const source = fs.readFileSync(filePath, 'utf-8')

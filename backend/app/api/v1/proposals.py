@@ -12,7 +12,7 @@ from app.core.security import create_access_token
 from app.middleware.audit import audit_action
 from app.models.product import Product, ProductImage
 from app.models.sales import Proposal, ProposalItem
-from app.schemas.proposal import ProposalCreate, ProposalResponse, ProposalUpdate
+from app.schemas.proposal import ProposalCreate, ProposalUpdate
 
 router = APIRouter()
 
