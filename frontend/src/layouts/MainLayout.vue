@@ -14,7 +14,7 @@
         <img
           class="logo-img"
           src="/openPIM-white.png"
-          alt="AI-openPIM"
+          alt="AI-PIM"
         >
       </div>
       <el-menu
@@ -228,7 +228,7 @@ const routeLabels: Record<string, [string, string]> = {
   import: ['AI 功能', '批量导入'],
   version: ['系统信息', '版本'],
 }
-const currentLabels = computed(() => routeLabels[route.path.split('/')[1]] || ['工作台', 'AI-openPIM'])
+const currentLabels = computed(() => routeLabels[route.path.split('/')[1]] || ['工作台', 'AI-PIM'])
 const pageSection = computed(() => currentLabels.value[0])
 const pageTitle = computed(() => route.params.id ? `${currentLabels.value[1]}详情` : currentLabels.value[1])
 const userInitial = computed(() => (authStore.currentUser?.username || 'AI').slice(0, 1).toUpperCase())
@@ -272,10 +272,16 @@ const handleLogout = async () => {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sidebar :deep(.el-menu::-webkit-scrollbar) {
+  display: none;
 }
 
 .logo-img {
-  height: 32px;
+  height: 38px;
   width: auto;
   display: block;
 }
@@ -284,6 +290,7 @@ const handleLogout = async () => {
   height: 86px;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 12px;
   padding: 0 20px;
   color: #fff;
