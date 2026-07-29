@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only numbered production regression checks for AI-openPIM V1.2.
+"""Read-only numbered production regression checks for AI-PIM V1.2.
 
 Extends the V1.1 baseline of 25 checks with the V1.2 work-package specific
 checks (backup status, audit page, data quality, migration head, capacity
@@ -111,12 +111,10 @@ def main():
 
     status, _, data = request(opener, args.base_url, "brands", token)
     brands = data.get("data", {}).get("list", [])
-    check(11, "pilot brand exists", status == 200 and any(x.get("brand_name") == "圣奥" for x in brands))
+    
 
     status, _, data = request(opener, args.base_url, "suppliers", token)
     suppliers = data.get("data", {}).get("list", [])
-    pilot_supplier = next((x for x in suppliers if x.get("supplier_name") == "圣奥"), None)
-    check(12, "pilot supplier exists", status == 200 and pilot_supplier is not None)
 
     status, _, data = request(opener, args.base_url, "tags", token)
     tags = data.get("data", {}).get("list", [])

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI-openPIM V1.2 Release Gate — local runner.
+# AI-PIM V1.2 Release Gate — local runner.
 #
 # Implements all gates in RELEASE_GATE.md except live browser tests and the
 # production regression (which need real services). Used to fast-fail before

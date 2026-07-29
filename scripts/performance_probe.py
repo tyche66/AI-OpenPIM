@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repeatable HTTP latency probe for the deployed AI-openPIM API."""
+"""Repeatable HTTP latency probe for the deployed AI-PIM API."""
 
 import argparse
 import concurrent.futures

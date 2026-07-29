@@ -111,7 +111,7 @@
 | Frontend tests | `npm run test` | 36 passed |
 | Frontend build | `npm run build` | PASS，产物在 `frontend/dist` |
 | Compose config | `docker compose -f docker-compose.yml config --quiet` | PASS，仅 `version` obsolete warning |
-| Backend image | `docker compose build backend` | PASS，`openpim-backend:latest` |
+| Backend image | `docker compose build backend` | PASS，`richangpim-backend:latest` |
 | Compose runtime | `docker compose up -d postgres redis minio gotenberg backend nginx` | PASS，六服务全部健康 |
 | Runtime frontend | `curl -I http://localhost/` | PASS，200 |
 | Runtime H5 SPA | `curl -I http://localhost/share/test-token` | PASS，200 |
@@ -180,7 +180,7 @@ docker compose up -d backend
 
 ## 相关链接
 
-- 项目文档: `/home/AI-openPIM/docs/`
+- 项目文档: `/home/AI-PIM/docs/`
 - API 文档: http://localhost/docs
 - 前端: http://localhost
 - 后端: http://localhost:8000

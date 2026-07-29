@@ -92,6 +92,12 @@ const routes = [
         meta: { permissions: ['ai:use'] },
       },
       {
+        path: 'knowledge-debug',
+        name: 'KnowledgeDebug',
+        component: () => import('@/views/KnowledgeDebug.vue'),
+        meta: { permissions: ['knowledge:debug', 'ai:access'], permissionsMode: 'any' },
+      },
+      {
         path: 'manuals',
         name: 'Manuals',
         component: () => import('@/views/Manuals.vue'),
@@ -144,7 +150,7 @@ const routes = [
 ]
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes,
 })
 

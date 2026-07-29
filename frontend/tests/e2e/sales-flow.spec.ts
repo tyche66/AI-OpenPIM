@@ -450,7 +450,7 @@ test.describe('Sales Flow: Proposal → Quotation → Share', () => {
     await expect(page.getByText('¥75.00')).toBeVisible()
     await expect(page.getByText('¥150.00').first()).toBeVisible()
     await expect(page.getByText('¥1140.00')).toBeVisible()
-    await expect(page.getByText('AI-openPIM 提供技术支持')).toBeVisible()
+    await expect(page.getByText('AI-PIM 提供技术支持')).toBeVisible()
 
     // Verify NO cost info
     const sharePageText = await page.locator('.share-content').innerText()

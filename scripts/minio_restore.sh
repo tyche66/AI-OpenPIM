@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI-openPIM MinIO bucket restore.
+# AI-PIM MinIO bucket restore.
 #
 # Restore only to an explicitly supplied test bucket/instance unless production
 # recovery has been approved. This script never deletes Docker volumes.

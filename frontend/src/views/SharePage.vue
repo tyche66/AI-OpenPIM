@@ -2,7 +2,7 @@
   <div class="share-page">
     <div class="share-brand-header">
       <div class="brand-logo">
-        AI-openPIM
+        AI-PIM
       </div>
       <div class="brand-subtitle">
         产品信息共享平台
@@ -280,7 +280,7 @@
             访问次数: <strong>{{ shareData.access_count }}</strong>
           </p>
           <p class="footer-brand">
-            由 <strong>AI-openPIM</strong> 提供技术支持
+            由 <strong>AI-PIM</strong> 提供技术支持
           </p>
         </div>
       </div>

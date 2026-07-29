@@ -10,6 +10,7 @@ export default defineConfig(({ mode }) => {
   process.env.VITE_BUILD_TIME ||= env.BUILD_TIME
 
   return {
+  base: process.env.VITE_BASE_PATH || '/',
   plugins: [vue()],
   resolve: {
     alias: {
@@ -24,6 +25,9 @@ export default defineConfig(({ mode }) => {
         changeOrigin: true,
       },
     },
+  },
+  preview: {
+    allowedHosts: ['.tail7a5d7a.ts.net', 'localhost', '127.0.0.1'],
   },
   build: {
     outDir: 'dist',

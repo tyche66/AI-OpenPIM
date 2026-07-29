@@ -7,8 +7,8 @@ def _record():
     return {
         "product_no": "EMD89R.320190",
         "product_name": "总裁桌",
-        "brand_name": "sample",
-        "supplier_name": "sample",
+        "brand_name": "Sample Brand",
+        "supplier_name": "Sample Supplier",
         "category_parent": "办公桌",
         "category_name": "独立主管桌",
         "series": "铭达",
