@@ -1,11 +1,19 @@
 <p align="center">
-  <img src="frontend/public/openPIM.png" alt="AI OpenPIM" width="120" />
+  <img src="OpenPIM.png" alt="AI OpenPIM" width="160" />
 </p>
 
 <h1 align="center">AI OpenPIM</h1>
 
 <p align="center">
   An open-source PIM for product teams, sales teams, media assets, quotations, sharing pages, and AI-assisted product workflows.
+  <br />
+  面向产品团队、销售团队、媒体资产、报价分享和 AI 辅助产品工作流的开源 PIM。
+</p>
+
+<p align="center">
+  <a href="#why-openpim">English</a>
+  ·
+  <a href="#ai-openpim-中文版">中文版入口</a>
 </p>
 
 <p align="center">
