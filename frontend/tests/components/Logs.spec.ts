@@ -64,6 +64,7 @@ describe('Logs.vue', () => {
             action: 'login',
             module: 'auth',
             user_id: 'admin-uuid',
+            username: '张三',
             target_id: null,
             response_code: 200,
             ip: '127.0.0.1',
@@ -73,6 +74,7 @@ describe('Logs.vue', () => {
             action: 'login_failed',
             module: 'auth',
             user_id: null,
+            username: null,
             target_id: null,
             response_code: 401,
             ip: '203.0.113.7',
@@ -82,6 +84,7 @@ describe('Logs.vue', () => {
             action: 'product_create',
             module: 'products',
             user_id: 'admin-uuid',
+            username: null,
             target_id: 'p-1',
             response_code: 500,
             ip: '127.0.0.1',
@@ -99,9 +102,16 @@ describe('Logs.vue', () => {
     // Header
     expect(wrapper.text()).toContain('操作审计')
 
-    // Table content rows
-    expect(wrapper.text()).toContain('login')
-    expect(wrapper.text()).toContain('product_create')
+    // 动作/模块按中文名渲染，后端枚举不直接摊给用户看。
+    expect(wrapper.text()).toContain('登录')
+    expect(wrapper.text()).toContain('新建产品')
+    expect(wrapper.text()).not.toContain('product_create')
+
+    // 操作用户列：记到了用户名就显示用户名；只剩 user_id 时退化成短编号；
+    // 两者都没有的匿名请求明确标注，不猜一个名字填上去。
+    expect(wrapper.text()).toContain('张三')
+    expect(wrapper.text()).toContain('admin-uu…')
+    expect(wrapper.text()).toContain('匿名请求')
 
     // Response code badge presence (data values)
     expect(wrapper.text()).toContain('200')

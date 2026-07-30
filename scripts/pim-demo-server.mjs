@@ -117,7 +117,7 @@ function rewriteAdminHtml(html) {
   return html
     .replaceAll('href="/assets/', 'href="/admin/assets/')
     .replaceAll('src="/assets/', 'src="/admin/assets/')
-    .replaceAll('href="/openPIM.png"', 'href="/admin/openPIM.png"')
+    .replaceAll('href="/RiChangPIM.png"', 'href="/admin/RiChangPIM.png"')
 }
 
 function rewriteAdminJavaScript(source) {
@@ -215,7 +215,7 @@ const server = http.createServer((req, res) => {
   }
 
   if (urlPath === '/favicon.ico') {
-    return serveStatic({ ...req, url: '/openPIM.png' }, res, adminRootDir)
+    return serveStatic({ ...req, url: '/RiChangPIM.png' }, res, adminRootDir)
   }
 
   if (urlPath.startsWith('/assets/') || /\.[a-zA-Z0-9]+$/.test(urlPath)) {

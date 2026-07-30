@@ -17,7 +17,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
-    APP_NAME: str = "AI-openPIM"
+    APP_NAME: str = "AI-PIM"
     DEBUG: bool = False
     VERSION: str = "0.1.0"
     APP_VERSION: str | None = None

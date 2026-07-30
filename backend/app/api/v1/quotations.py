@@ -18,6 +18,7 @@ from app.models.product import Product, ProductImage
 from app.models.sales import Proposal, Quotation, QuotationItem
 from app.schemas.quotation import (
     QuotationCreate,
+    QuotationResponse,
     QuotationUpdate,
 )
 
@@ -403,7 +404,7 @@ async def create_quotation(
     if not proposal:
         raise HTTPException(status_code=404, detail={"code": 40401, "msg": "关联方案不存在"})
 
-    await _validate_quotation_items(
+    products = await _validate_quotation_items(
         [i.product_id for i in quotation_data.items], db
     )
 
@@ -490,7 +491,7 @@ async def update_quotation(
                 status_code=422, detail={"code": 42201, "msg": "报价明细不可为空"}
             )
         if new_items is not None:
-            await _validate_quotation_items(
+            products = await _validate_quotation_items(
                 [i.product_id for i in new_items], db
             )
             old_items = await db.execute(

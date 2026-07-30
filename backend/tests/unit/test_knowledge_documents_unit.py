@@ -7,7 +7,7 @@ def test_product_card_render_includes_only_expected_labels():
         {
             "product_name": "测试桌",
             "product_no": "A100",
-            "brand": "Sample Brand",
+            "brand": "示例品牌",
             "tags": ["人体工学", "办公"],
             "description": "适用于办公室。",
         }
@@ -15,7 +15,7 @@ def test_product_card_render_includes_only_expected_labels():
 
     assert "产品名称: 测试桌" in text
     assert "产品编号: A100" in text
-    assert "品牌: Sample Brand" in text
+    assert "品牌: 示例品牌" in text
     assert "标签: 人体工学、办公" in text
     assert "面价" not in text
     assert "成本" not in text

@@ -14,7 +14,7 @@
         <img
           class="logo-img"
           src="/openPIM-white.png"
-          alt="AI-openPIM"
+          alt="AI-PIM"
         >
       </div>
       <el-menu
@@ -34,9 +34,6 @@
           <el-menu-item index="/products">
             产品列表
           </el-menu-item>
-          <el-menu-item index="/quality">
-            数据质量
-          </el-menu-item>
           <el-menu-item index="/categories">
             分类管理
           </el-menu-item>
@@ -54,6 +51,9 @@
           </el-menu-item>
           <el-menu-item index="/scene-images">
             场景图管理
+          </el-menu-item>
+          <el-menu-item index="/quality">
+            数据质量
           </el-menu-item>
         </el-sub-menu>
         <el-sub-menu index="m-sales">
@@ -92,13 +92,10 @@
             <span>AI 功能</span>
           </template>
           <el-menu-item index="/ai-select">
-            AI 智能选品
+            AI 选品
           </el-menu-item>
           <el-menu-item index="/manuals">
             产品知识库
-          </el-menu-item>
-          <el-menu-item index="/knowledge-debug">
-            Gateway 调试
           </el-menu-item>
           <el-menu-item index="/import">
             批量导入
@@ -130,13 +127,13 @@
           <button
             class="user-chip"
             type="button"
-            aria-label="退出"
-            title="退出登录"
-            @click="handleLogout"
+            aria-label="账户操作"
+            title="账户操作"
+            @click="accountDialogVisible = true"
           >
             <span class="avatar">{{ userInitial }}</span>
             <span class="user-copy">
-              <strong>{{ authStore.currentUser?.username || '当前用户' }}</strong>
+              <strong>{{ displayName }}</strong>
               <small>{{ authStore.userRoleCode || '团队成员' }}</small>
             </span>
           </button>
@@ -153,11 +150,48 @@
         </router-view>
       </el-main>
     </el-container>
+
+    <el-dialog
+      v-model="accountDialogVisible"
+      title="账户"
+      width="380px"
+      align-center
+      class="account-dialog"
+    >
+      <div class="account-identity">
+        <span class="avatar avatar--lg">{{ userInitial }}</span>
+        <span class="account-copy">
+          <strong>{{ displayName }}</strong>
+          <small>{{ authStore.userRoleCode || '团队成员' }}</small>
+        </span>
+      </div>
+      <p class="account-hint">
+        退出登录会清除本机的登录凭据；切换用户会在登录成功后回到当前页面。
+      </p>
+      <template #footer>
+        <div class="account-actions">
+          <el-button
+            class="account-btn"
+            :loading="accountBusy"
+            @click="handleSwitchUser"
+          >
+            切换用户
+          </el-button>
+          <el-button
+            class="account-btn account-btn--strong"
+            :loading="accountBusy"
+            @click="handleLogout"
+          >
+            退出登录
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </el-container>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Cpu, Document, DocumentCopy, InfoFilled, Menu, Setting } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
@@ -166,19 +200,21 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const mobileMenuOpen = ref(false)
+const accountDialogVisible = ref(false)
+const accountBusy = ref(false)
 const menuRef = ref<{ updateActiveIndex?: (index: string) => void } | null>(null)
 
 const activeMenu = computed(() => route.path)
 
 const subMenuMap: Record<string, string> = {
   products: 'm-products',
-  quality: 'm-products',
   categories: 'm-products',
   brands: 'm-products',
   suppliers: 'm-products',
   tags: 'm-products',
   media: 'm-products',
   'scene-images': 'm-products',
+  quality: 'm-products',
   proposals: 'm-sales',
   quotations: 'm-sales',
   users: 'm-admin',
@@ -187,7 +223,6 @@ const subMenuMap: Record<string, string> = {
   logs: 'm-admin',
   'ai-select': 'm-ai',
   manuals: 'm-ai',
-  'knowledge-debug': 'm-ai',
   import: 'm-ai',
 }
 const defaultOpenedMenus = computed(() => {
@@ -214,28 +249,29 @@ const handleMenuSelect = async (index: string) => {
 
 const routeLabels: Record<string, [string, string]> = {
   products: ['产品管理', '产品列表'],
-  quality: ['产品管理', '数据质量'],
   categories: ['产品管理', '分类管理'],
   brands: ['产品管理', '品牌管理'],
   suppliers: ['产品管理', '供应商'],
   tags: ['产品管理', '标签管理'],
   media: ['产品管理', '媒体库'],
   'scene-images': ['产品管理', '场景图管理'],
+  quality: ['产品管理', '数据质量'],
   proposals: ['销售管理', '方案管理'],
   quotations: ['销售管理', '报价管理'],
   users: ['系统管理', '用户管理'],
   roles: ['系统管理', '角色权限'],
   shares: ['系统管理', '分享管理'],
   logs: ['系统管理', '操作日志'],
-  'ai-select': ['AI 功能', '智能选品'],
+  'ai-select': ['AI 功能', 'AI 选品'],
   manuals: ['AI 功能', '产品知识库'],
-  'knowledge-debug': ['AI 功能', 'Gateway 调试'],
   import: ['AI 功能', '批量导入'],
   version: ['系统信息', '版本'],
 }
 const currentLabels = computed(() => routeLabels[route.path.split('/')[1]] || ['工作台', 'AI-PIM'])
 const pageSection = computed(() => currentLabels.value[0])
 const pageTitle = computed(() => route.params.id ? `${currentLabels.value[1]}详情` : currentLabels.value[1])
+// 顶栏只显示真实用户名。/auth/me 还没回来时给出中性占位，不用「当前用户」冒名顶替。
+const displayName = computed(() => authStore.currentUser?.username || '加载中…')
 const userInitial = computed(() => (authStore.currentUser?.username || 'AI').slice(0, 1).toUpperCase())
 
 watch(() => route.fullPath, () => {
@@ -243,9 +279,33 @@ watch(() => route.fullPath, () => {
   syncMenuActive()
 })
 
+// 顶栏要显示用户名，profile 可能还没被 init() 拉到（例如刷新时 /auth/me 抖动）。
+onMounted(() => {
+  if (!authStore.currentUser) void authStore.ensureUser()
+})
+
 const handleLogout = async () => {
-  await authStore.logout()
+  accountBusy.value = true
+  try {
+    await authStore.logout()
+  } finally {
+    accountBusy.value = false
+    accountDialogVisible.value = false
+  }
   router.push('/login')
+}
+
+/** 切换用户＝退出后带上当前路径，另一个账号登录成功后回到同一页。 */
+const handleSwitchUser = async () => {
+  const redirect = route.fullPath
+  accountBusy.value = true
+  try {
+    await authStore.logout()
+  } finally {
+    accountBusy.value = false
+    accountDialogVisible.value = false
+  }
+  router.push({ path: '/login', query: { redirect } })
 }
 </script>
 
@@ -423,6 +483,58 @@ const handleLogout = async () => {
   color: rgba(30, 50, 90, 0.48);
   font-size: 10px;
   text-transform: uppercase;
+}
+
+.account-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.avatar--lg {
+  width: 52px;
+  height: 52px;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.account-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.account-copy strong {
+  color: rgba(30, 50, 90, 0.92);
+  font-size: 17px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.account-copy small {
+  color: rgba(30, 50, 90, 0.5);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.account-hint {
+  margin: 16px 0 0;
+  color: rgba(30, 50, 90, 0.56);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.account-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.account-btn--strong {
+  border-color: rgb(30, 50, 90);
+  background: rgb(30, 50, 90);
+  color: #fff;
 }
 
 .el-main {

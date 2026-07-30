@@ -174,7 +174,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION or settings.VERSION,
-    description="AI 产品信息管理平台 (AI-openPIM) - Business API",
+    description="AI 产品信息管理平台 (AI-PIM) - Business API",
     lifespan=lifespan,
 )
 
@@ -218,7 +218,7 @@ app.include_router(version.router, prefix="/api/v1", tags=["version"])
 async def root():
     return {
         "code": 200,
-        "data": {"message": "AI-openPIM API", "version": settings.APP_VERSION or settings.VERSION},
+        "data": {"message": "AI-PIM API", "version": settings.APP_VERSION or settings.VERSION},
     }
 
 

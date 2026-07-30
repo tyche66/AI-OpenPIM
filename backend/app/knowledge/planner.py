@@ -44,8 +44,8 @@ QUALITY_TERMS = {
     "待完善": "pending",
 }
 BUSINESS_TERMS = (
-    "铭达",
-    "Sample Brand",
+    "示例系列",
+    "示例品牌",
     "办公桌",
     "班台",
     "总裁桌",

@@ -341,7 +341,7 @@ async def seed(check_only: bool, with_admin: bool):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="AI-openPIM 装后种子数据脚本")
+    parser = argparse.ArgumentParser(description="AI-PIM 装后种子数据脚本")
     parser.add_argument("--check", action="store_true", help="仅校验缺失项，不写入")
     parser.add_argument("--no-admin", action="store_true", help="不创建 admin 用户")
     args = parser.parse_args()

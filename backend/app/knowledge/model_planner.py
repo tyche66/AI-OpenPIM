@@ -132,7 +132,7 @@ def _parse_tool_calls(answer: str | None) -> list[dict[str, Any]]:
 
 def _planning_instructions(categories: list[dict[str, Any]], allowed_tools: set[str]) -> str:
     return (
-        "你是 openPIM 的只读工具规划器。理解用户完整自然语言，并选择查询所需的工具。"
+        "你是 OpenPIM 的只读工具规划器。理解用户完整自然语言，并选择查询所需的工具。"
         "仅输出合法 JSON，不要输出解释："
         "{\"tool_calls\":[{\"name\":\"工具名\",\"arguments\":{...}}]}。"
         "只能从可用工具选择，不能编造工具，不能执行写操作。用户要求最便宜时 sort_order 用 asc，"

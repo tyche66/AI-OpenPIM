@@ -15,14 +15,7 @@ from app.core.minio_client import get_minio_client
 from app.core.permission import PermissionChecker
 from app.core.security import create_access_token, decode_access_token
 from app.middleware.audit import audit_action
-from app.models.product import (
-    Attachment,
-    Product,
-    ProductImage,
-    ProductManual,
-    SceneImage,
-    product_scene_image,
-)
+from app.models.product import Attachment, Product, ProductImage, ProductManual, SceneImage, product_scene_image
 from app.schemas.file import FilePresignResponse, FileReferences, FileUploadResponse
 
 router = APIRouter()
@@ -75,7 +68,8 @@ def _content_type_for(attachment: Attachment) -> str:
 
 def _iter_minio_object(obj) -> Iterator[bytes]:
     try:
-        yield from obj.stream(1024 * 1024)
+        for chunk in obj.stream(1024 * 1024):
+            yield chunk
     finally:
         obj.close()
         obj.release_conn()

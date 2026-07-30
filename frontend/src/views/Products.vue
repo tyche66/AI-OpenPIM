@@ -309,24 +309,28 @@
           <el-table-column
             prop="productNo"
             label="产品编号"
+            class-name="cell-code"
             :width="autoFit ? colWidths['productNo'] : 120"
             :show-overflow-tooltip="{ teleported: true, placement: 'top' }"
           />
           <el-table-column
             prop="productName"
             label="产品名称"
+            class-name="cell-strong"
             :width="autoFit ? colWidths['productName'] : 180"
             :show-overflow-tooltip="{ teleported: true, placement: 'top' }"
           />
           <el-table-column
             prop="brandName"
             label="品牌"
+            class-name="cell-soft"
             :width="autoFit ? colWidths['brandName'] : 100"
             :show-overflow-tooltip="{ teleported: true, placement: 'top' }"
           />
           <el-table-column
             prop="categoryName"
             label="分类"
+            class-name="cell-soft"
             :width="autoFit ? colWidths['categoryName'] : 100"
             :show-overflow-tooltip="{ teleported: true, placement: 'top' }"
           />
@@ -421,8 +425,8 @@
           <el-table-column
             label="操作"
             class="op-col"
-            min-width="240"
-            :width="autoFit ? colWidths['operation'] : 240"
+            :min-width="OPERATION_WIDTH"
+            :width="autoFit ? colWidths['operation'] : OPERATION_WIDTH"
             align="center"
           >
             <template #default="{ row }">
@@ -825,12 +829,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { View, Hide, Operation, Grid, List, ArrowDown } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { productApi, categoryApi, brandApi, supplierApi, tagApi } from '@/api'
+import { usePreference } from '@/composables/usePreference'
 import { useAuthStore } from '@/stores/auth'
 import { hasPermission } from '@/types/permissions'
 import type { ProductOption, ProposalToken } from '@/types/sales'
@@ -863,8 +868,10 @@ const editingProduct = ref<any>(null)
 const submitting = ref(false)
 const productFormRef = ref<FormInstance>()
 
-const autoFit = ref(true)
-const viewMode = ref<'table' | 'grid'>('table')
+// 视图模式和列宽策略是用户习惯，记在浏览器里，下次进来沿用上次的选择。
+const viewMode = usePreference<'table' | 'grid'>('products.viewMode', 'table', ['table', 'grid'] as const)
+const autoFit = usePreference('products.autoFit', true)
+// 成本价开关是敏感信息的临时揭示，只在本次会话生效，不做持久化。
 const costVisible = ref(false)
 const colWidths = ref<Record<string, number>>({})
 const productTableRef = ref()
@@ -982,29 +989,47 @@ const fetchProducts = async () => {
   }
 }
 
+/**
+ * 量宽用的字体串必须跟 design-system.css 对齐：正文取 --pim-font-sans，
+ * 产品编号列套了 .cell-code，走 --pim-font-mono 的 12px。
+ * 换字体不同步这里，列宽就会整体偏窄或偏宽。
+ * canvas 的 font 简写不接受 ui-sans-serif / system-ui，所以只留能被解析的部分。
+ */
+const FONT_BODY = '14px "PingFang SC", "Microsoft YaHei", sans-serif'
+const FONT_CODE = '12px ui-monospace, "SF Mono", Menlo, Consolas, monospace'
+
 // 文本列：按内容自适应（设最小/最大阈值）
-const FIT_TEXT = [
-  { prop: 'productNo', label: '产品编号', min: 110, max: 240 },
+const FIT_TEXT: Array<{ prop: string; label: string; min: number; max: number; font?: string }> = [
+  { prop: 'productNo', label: '产品编号', min: 110, max: 240, font: FONT_CODE },
   { prop: 'brandName', label: '品牌', min: 90, max: 200 },
   { prop: 'categoryName', label: '分类', min: 90, max: 200 },
 ]
-// 固定列宽（不参与内容测量）
+/**
+ * 操作列宽度。只需容纳「查看 / 编辑 / 更多」三个控件：
+ * 两个 12px 双字文本按钮各 ≈24px、更多按钮 28px + 6px 外边距、两个 4px 间距、
+ * 单元格左右内边距 2×14px，合计约 118px，取 132px 留一点余量且不换行。
+ * 剩下的横向空间由 computeFillWidths() 让给产品名称列。
+ */
+const OPERATION_WIDTH = 132
+// 固定列宽（不参与内容测量）。数值必须和模板里写死的 width 保持一致，
+// 否则 productName 的填充宽度会算错，右侧要么留白要么溢出。
 const FIXED_WIDTHS: Record<string, number> = {
   image: 80,
   facePrice: 90,
-  stockStatus: 90,
-  status: 90,
+  stockStatus: 80,
+  status: 88,
   costPrice: 90,
-  operation: 360,
+  operation: OPERATION_WIDTH,
 }
+const SELECTION_WIDTH = 50
 const NAME_MIN = 140
 const NAME_MAX = 520
 
 const _measureCanvas = document.createElement('canvas')
 const _measureCtx = _measureCanvas.getContext('2d')!
 
-function measureTextWidth(text: string): number {
-  _measureCtx.font = '14px "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif'
+function measureTextWidth(text: string, font = FONT_BODY): number {
+  _measureCtx.font = font
   return _measureCtx.measureText(text == null ? '' : String(text)).width
 }
 
@@ -1021,10 +1046,11 @@ function computeFillWidths() {
   if (!container) return
   const result: Record<string, number> = {}
   for (const c of FIT_TEXT) {
+    // 表头是 12px，用正文字体量偏保守，宁可多留一点也不让表头被裁。
     let w = measureTextWidth(c.label) + 28
     for (const row of products.value) {
       const txt = row[c.prop] == null ? '' : String(row[c.prop])
-      w = Math.max(w, measureTextWidth(txt) + 24)
+      w = Math.max(w, measureTextWidth(txt, c.font) + 24)
     }
     result[c.prop] = Math.round(Math.min(Math.max(w, c.min), c.max))
   }
@@ -1034,7 +1060,9 @@ function computeFillWidths() {
     result[k] = v
   }
   const others = Object.values(result).reduce((a, b) => a + b, 0)
-  let nameW = container - others - FIXED_WIDTHS.operation
+  // 方案模式会多出一列勾选框，不减掉它总宽就会超出容器、逼出横向滚动条。
+  const reserved = others + FIXED_WIDTHS.operation + (proposalMode.value ? SELECTION_WIDTH : 0)
+  let nameW = container - reserved
   nameW = Math.min(Math.max(nameW, NAME_MIN), NAME_MAX)
   result.productName = Math.round(nameW)
   result.operation = FIXED_WIDTHS.operation
@@ -1055,7 +1083,7 @@ function onHeaderDragEnd(newWidth: number, _oldWidth: number, column: any) {
   const others = Object.entries(colWidths.value)
     .filter(([k]) => k !== 'productName')
     .reduce((a, [, v]) => a + (v as number), 0)
-  let nameW = container - others
+  let nameW = container - others - (proposalMode.value ? SELECTION_WIDTH : 0)
   nameW = Math.min(Math.max(nameW, NAME_MIN), NAME_MAX)
   colWidths.value = { ...colWidths.value, productName: Math.round(nameW) }
   nextTick(() => productTableRef.value?.doLayout())
@@ -1376,6 +1404,16 @@ onMounted(() => {
     resizeTimer = setTimeout(() => computeFillWidths(), 150) as unknown as number
   })
 })
+
+/**
+ * 视图模式是持久化的，可能一进页面就是卡片视图，此时表格没渲染、量不到容器宽度。
+ * 切回表格视图时补一次测量，否则列宽会全部回落到 min-width。
+ * 方案模式增删勾选列同样要重算。
+ */
+watch([viewMode, proposalMode], () => {
+  if (viewMode.value !== 'table') return
+  nextTick(() => computeFillWidths())
+})
 </script>
 
 <style scoped>
@@ -1659,22 +1697,8 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.product-table :deep(.el-table__header-wrapper) {
-  background: var(--brand-lighter);
-}
-
-.product-table :deep(.el-table__header th) {
-  background: var(--brand-lighter);
-  color: var(--text-primary);
-  font-weight: 600;
-  font-size: 13px;
-  padding: 14px 0;
-}
-
-.product-table :deep(.el-table__row td) {
-  padding: 12px 0;
-}
-
+/* 表头与单元格的字号、字重、颜色统一由 design-system.css 的表格规则给出，
+   这里只留页面自己的东西（悬停底色、边框描线），避免两套排版互相打架。 */
 .product-table :deep(.el-table__row:hover td) {
   background: var(--brand-lighter);
 }
@@ -1687,7 +1711,8 @@ onMounted(() => {
 .price-text {
   color: var(--brand-deep);
   font-weight: 600;
-  font-family: monospace;
+  font-family: var(--pim-font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .product-grid-wrap {
@@ -2097,7 +2122,7 @@ onMounted(() => {
     width: 90vw !important;
   }
 
-  .product-table :deep(.el-table__header-wrapper),
+  .product-table :deep(.el-table__header th),
   .product-table :deep(.el-table__row td) {
     font-size: 12px;
   }

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PID_FILE="/tmp/ai-pim-demo-server.pid"
-SCRIPT_PATH="/home/AI-PIM/openPIM/scripts/pim-demo-server.mjs"
+SCRIPT_PATH="$(cd "$(dirname "$0")" && pwd)/pim-demo-server.mjs"
 
 stop_pid() {
   local pid="$1"

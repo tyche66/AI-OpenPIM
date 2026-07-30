@@ -5,13 +5,13 @@ from app.scripts.import_sample_products import validate_records
 
 def _record():
     return {
-        "product_no": "EMD89R.320190",
+        "product_no": "SAMPLE-001",
         "product_name": "总裁桌",
         "brand_name": "Sample Brand",
         "supplier_name": "Sample Supplier",
         "category_parent": "办公桌",
         "category_name": "独立主管桌",
-        "series": "铭达",
+        "series": "示例系列",
         "data_source": "source.txt",
         "face_price": 99999,
         "completeness_status": "pending",
@@ -19,7 +19,7 @@ def _record():
 
 
 def test_validate_traceable_pending_product():
-    assert validate_records([_record()])[0]["product_no"] == "EMD89R.320190"
+    assert validate_records([_record()])[0]["product_no"] == "SAMPLE-001"
 
 
 def test_rejects_duplicate_product_number():

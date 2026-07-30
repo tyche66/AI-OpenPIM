@@ -1,6 +1,6 @@
-# AI-PIM openPIM
+# AI OpenPIM
 
-openPIM 是当前这套 AI-PIM 项目的工作快照，面向产品信息管理、产品导入、方案/报价、媒体资源、分享页和基础 AI 能力。
+AI OpenPIM 是面向产品信息管理、产品导入、方案/报价、媒体资源、分享页和基础 AI 能力的开源项目。
 
 这份 README 按常见项目文档结构组织，同时保留当前快照的代码索引、启动方式、数据位置和产品信息落点，便于交接、排障和复现。
 
@@ -22,17 +22,21 @@ openPIM 是当前这套 AI-PIM 项目的工作快照，面向产品信息管理�
 
 | 项目项 | 当前状态 |
 | --- | --- |
-| 仓库根目录 | `openPIM/` |
+| 仓库根目录 | `AI-openPIM/` |
 | 后端 | `backend/`，FastAPI + SQLAlchemy + Alembic |
 | 前端 | `frontend/`，Vue 3 + Vite + Element Plus + Pinia |
+| AI 门户 | `portal/`，独立 AI 对话门户 |
 | 数据库 | PostgreSQL 16 + pgvector |
 | 缓存 | Redis 7 |
 | 对象存储 | MinIO |
 | 文档转换 | Gotenberg 8 |
 | OCR 服务 | `docker/ocr/` 容器内独立服务 |
+| AI 默认状态 | `AI_ADAPTER=none`，按环境变量配置模型 |
+| Knowledge Gateway | 默认启用（`KNOWLEDGE_GATEWAY_ENABLED=1`）|
+| 当前版本 | v1.8.5 |
 | 当前迁移 head | `0014_knowledge_tables` |
 | 主要种子入口 | `backend/app/scripts/seed_data.py` + `backend/alembic/versions/0004_seed_data.py` |
-| 产品试点数据文件 | `backend/data/sample_products.json` |
+| 示例数据 | `backend/data/sample_products.json` |
 
 ## 功能特性
 
@@ -197,14 +201,14 @@ docker compose up -d
 
 ### 根级环境变量
 
-- `openPIM/.env`
+- `.env`
 
 这个文件用于当前本地开发快照，包含 PostgreSQL、JWT、MinIO、AI 等配置。
 
 ### 后端环境变量模板
 
-- `openPIM/backend/.env.example`
-- `openPIM/backend/.env`
+- `backend/.env.example`
+- `backend/.env`
 
 后端配置读取逻辑在：
 
@@ -218,9 +222,9 @@ docker compose up -d
 
 生产 `docker-compose.yml` 中使用的是命名卷：
 
-- PostgreSQL：`richangpim_go_postgres_pg16_data_20260716`
-- Redis：`richangpim_go_redis_data_20260716`
-- MinIO：`richangpim_go_minio_data_20260716`
+- PostgreSQL：`postgres_pg16_data`
+- Redis：`redis_data`
+- MinIO：`minio_data`
 
 对应服务位置见 `docker-compose.yml`：
 
@@ -304,15 +308,11 @@ docker compose up -d
 
 - `backend/data/sample_products.json`
 
-这是当前试点产品的 JSON 数据文件，导入脚本会读取它。
+这是开源示例产品 JSON 数据文件，导入脚本会读取它。
 
 - `backend/app/scripts/import_sample_products.py`
 
-这是试点产品导入脚本，特点是幂等、可校验、可更新已有产品。
-
-- `backend/app/scripts/import_sample_taxonomy.py`
-
-这是Sample taxonomy 导入脚本，用于导入品类与系列标签。
+这是示例产品导入脚本，特点是幂等、可校验、可更新已有产品。
 
 ### 4. 产品页面
 
