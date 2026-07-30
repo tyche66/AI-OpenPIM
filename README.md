@@ -145,18 +145,6 @@ npm run dev
 | AI Portal | Ask product questions, compare options, inspect sources, and continue guided workflows |
 | Public Share Page | View shared proposal/quotation content without exposing admin-only screens |
 
-## Community Edition Boundary
-
-This repository intentionally does not include private or customer-specific material.
-
-| Not Included | Why |
-| --- | --- |
-| Real `.env` files and production secrets | They must stay outside Git |
-| Provider API keys, tokens, TLS keys, certificates | They are replaced by placeholders or excluded |
-| Customer product data and private samples | The community edition uses generic sample placeholders |
-| Internal runbooks, review records, and architecture documents | The public repo focuses on runnable code and a concise project overview |
-| Local logs, database volumes, build outputs, dependency folders | They are runtime artifacts, not source code |
-
 ## Safe Publishing Checklist
 
 Before publishing changes, run the secret scanner:
@@ -177,17 +165,6 @@ npm run test
 cd portal
 npm run build
 ```
-
-## Project Status
-
-| Item | Status |
-| --- | --- |
-| Community Edition | Sanitized and public |
-| Current App Version | `1.8.5` |
-| Admin Console | Included |
-| AI Portal | Included |
-| Example Data | Generic placeholder data only |
-| Technical Design Docs | Not included in this public edition |
 
 ## License
 
@@ -318,18 +295,6 @@ npm run dev
 | AI Portal | 进行产品问答、比较选项、查看来源并继续引导式工作流 |
 | 公开分享页 | 在不暴露后台页面的情况下展示对外分享内容 |
 
-## 社区版边界
-
-这个仓库是已脱敏的社区开源版，不包含私有或客户专属资料。
-
-| 不包含 | 原因 |
-| --- | --- |
-| 真实 `.env` 文件和生产密钥 | 必须保存在 Git 之外 |
-| Provider API Key、Token、TLS 私钥、证书 | 使用占位符或直接排除 |
-| 客户产品数据和私有样例 | 社区版只保留通用占位数据 |
-| 内部运维记录、审查记录和架构设计文档 | 公开仓库聚焦可运行代码和项目概览 |
-| 本地日志、数据库卷、构建产物、依赖目录 | 这些是运行时产物，不是源码 |
-
 ## 发布前安全检查
 
 发布变更前建议运行：
@@ -350,17 +315,6 @@ npm run test
 cd portal
 npm run build
 ```
-
-## 项目状态
-
-| 项目 | 状态 |
-| --- | --- |
-| 社区开源版 | 已脱敏并公开 |
-| 当前应用版本 | `1.8.5` |
-| 管理后台 | 已包含 |
-| AI Portal | 已包含 |
-| 示例数据 | 仅使用通用占位数据 |
-| 技术设计文档 | 不包含在公开社区版中 |
 
 ## 许可证
 
