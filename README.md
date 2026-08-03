@@ -11,9 +11,9 @@
 </p>
 
 <p align="center">
-  <a href="#why-openpim">English</a>
-  ·
   <a href="#ai-openpim-中文版">中文版入口</a>
+  ·
+  <a href="#why-openpim">English</a>
 </p>
 
 <p align="center">
