@@ -5,16 +5,17 @@ Revises: 0012_product_scene_image_partial_unique
 Create Date: 2026-07-25 00:00:00.000000
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 from uuid import uuid4
 
-from alembic import op
 from sqlalchemy.sql import text
 
+from alembic import op
+
 revision: str = "0013_ai_permissions"
-down_revision: Union[str, None] = "0012_product_scene_image_partial_unique"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0012_product_scene_image_partial_unique"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 PERMISSIONS = [

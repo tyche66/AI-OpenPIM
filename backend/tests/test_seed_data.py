@@ -31,7 +31,6 @@ from sqlalchemy import create_engine, text
 # NOT for permission counts — counts must be dynamic because subsequent
 # migrations (e.g. 0011_add_media_permissions) add permissions that seed_data
 # does not enumerate in its PERMISSIONS list.
-from app.scripts.seed_data import ROLE_PERMISSIONS
 
 
 def _sync_url():

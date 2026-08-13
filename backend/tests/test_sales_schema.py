@@ -21,13 +21,11 @@
     quotation unit_price/tax_rate/subtotal，绝不含 cost_price
 """
 
-from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
 
-from app.models.audit import Share, ShareToken
 from app.models.product import Brand, Category, Product, Supplier
 from app.models.sales import (
     Proposal,

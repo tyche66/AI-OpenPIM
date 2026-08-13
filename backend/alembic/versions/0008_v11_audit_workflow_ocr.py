@@ -5,17 +5,16 @@ Revises: 0007_add_manual_parse_metadata
 Create Date: 2026-07-17
 """
 
-from typing import Union
 from uuid import uuid4
 
 import sqlalchemy as sa
+
 from alembic import op
 
-
 revision: str = "0008_v11_audit_workflow_ocr"
-down_revision: Union[str, None] = "0007_add_manual_parse_metadata"
-branch_labels: Union[str, tuple[str, ...], None] = None
-depends_on: Union[str, tuple[str, ...], None] = None
+down_revision: str | None = "0007_add_manual_parse_metadata"
+branch_labels: str | tuple[str, ...] | None = None
+depends_on: str | tuple[str, ...] | None = None
 
 
 PERMISSIONS = [

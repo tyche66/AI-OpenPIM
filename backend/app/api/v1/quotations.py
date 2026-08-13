@@ -18,7 +18,6 @@ from app.models.product import Product, ProductImage
 from app.models.sales import Proposal, Quotation, QuotationItem
 from app.schemas.quotation import (
     QuotationCreate,
-    QuotationResponse,
     QuotationUpdate,
 )
 
@@ -407,6 +406,7 @@ async def create_quotation(
     products = await _validate_quotation_items(
         [i.product_id for i in quotation_data.items], db
     )
+    del products  # validated; result retained for parity with create-proposal flow
 
     quotation = Quotation(
         quotation_no=_gen_quotation_no(),
@@ -494,6 +494,7 @@ async def update_quotation(
             products = await _validate_quotation_items(
                 [i.product_id for i in new_items], db
             )
+            del products  # validated; result retained for parity with create flow
             old_items = await db.execute(
                 select(QuotationItem).where(QuotationItem.quotation_id == quotation.id)
             )

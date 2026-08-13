@@ -18,7 +18,6 @@ from sqlalchemy import select
 from app.models.product import (
     Attachment,
     Product,
-    ProductImage,
     ProductManual,
     SceneImage,
     product_scene_image,
@@ -86,7 +85,7 @@ async def test_rebind_after_unbind_succeeds(client, _sessionmaker):
     """解绑后重新绑定同一场景图，不报主键冲突。"""
     async with _sessionmaker() as s:
         # 先创建必需的基础数据
-        from app.models.product import Brand, Supplier, Category
+        from app.models.product import Brand, Category, Supplier
         brand = Brand(brand_name=f"TestBrand-{uuid4().hex[:8]}")
         supplier = Supplier(supplier_name=f"TestSupplier-{uuid4().hex[:8]}")
         category = Category(category_name=f"TestCat-{uuid4().hex[:8]}", level=1)
@@ -139,7 +138,7 @@ async def test_rebind_after_unbind_succeeds(client, _sessionmaker):
 async def test_product_detail_omits_unbound_scene_images(client, _sessionmaker):
     """产品详情不返回已解绑的场景图。"""
     async with _sessionmaker() as s:
-        from app.models.product import Brand, Supplier, Category
+        from app.models.product import Brand, Category, Supplier
         brand = Brand(brand_name=f"TestBrand-{uuid4().hex[:8]}")
         supplier = Supplier(supplier_name=f"TestSupplier-{uuid4().hex[:8]}")
         category = Category(category_name=f"TestCat-{uuid4().hex[:8]}", level=1)
@@ -198,7 +197,7 @@ async def test_product_detail_omits_unbound_scene_images(client, _sessionmaker):
 async def test_deleted_scene_image_omitted_from_product_detail(client, _sessionmaker):
     """删除场景图后产品详情不再返回该场景图。"""
     async with _sessionmaker() as s:
-        from app.models.product import Brand, Supplier, Category
+        from app.models.product import Brand, Category, Supplier
         brand = Brand(brand_name=f"TestBrand-{uuid4().hex[:8]}")
         supplier = Supplier(supplier_name=f"TestSupplier-{uuid4().hex[:8]}")
         category = Category(category_name=f"TestCat-{uuid4().hex[:8]}", level=1)
@@ -255,7 +254,7 @@ async def test_deleted_scene_image_omitted_from_product_detail(client, _sessionm
 async def test_different_product_different_sort(client, _sessionmaker):
     """同一场景图绑定到不同产品时各产品可保存不同排序。"""
     async with _sessionmaker() as s:
-        from app.models.product import Brand, Supplier, Category
+        from app.models.product import Brand, Category, Supplier
         brand = Brand(brand_name=f"TestBrand-{uuid4().hex[:8]}")
         supplier = Supplier(supplier_name=f"TestSupplier-{uuid4().hex[:8]}")
         category = Category(category_name=f"TestCat-{uuid4().hex[:8]}", level=1)
@@ -288,7 +287,7 @@ async def test_different_product_different_sort(client, _sessionmaker):
         ))
         await s.commit()
 
-        pid1, pid2, sid = p1.id, p2.id, si.id
+        pid1, pid2, _sid = p1.id, p2.id, si.id
         token = await _login_admin(client)
 
     # 验证产品1的 sort=5
@@ -320,7 +319,7 @@ async def test_different_product_different_sort(client, _sessionmaker):
 async def test_ref_count_counts_all_types(client, _sessionmaker):
     """PDF/doc 等非 image 类型的附件 ref_count 也正确统计。"""
     async with _sessionmaker() as s:
-        from app.models.product import Brand, Supplier, Category
+        from app.models.product import Brand, Category, Supplier
         brand = Brand(brand_name=f"TestBrand-{uuid4().hex[:8]}")
         supplier = Supplier(supplier_name=f"TestSupplier-{uuid4().hex[:8]}")
         category = Category(category_name=f"TestCat-{uuid4().hex[:8]}", level=1)
@@ -416,7 +415,7 @@ async def test_replace_file_preserves_ref_count(client, _sessionmaker):
 async def test_scene_image_reorder_uses_association_sort(client, _sessionmaker):
     """产品场景图排序使用 product_scene_image.sort。"""
     async with _sessionmaker() as s:
-        from app.models.product import Brand, Supplier, Category
+        from app.models.product import Brand, Category, Supplier
         brand = Brand(brand_name=f"TestBrand-{uuid4().hex[:8]}")
         supplier = Supplier(supplier_name=f"TestSupplier-{uuid4().hex[:8]}")
         category = Category(category_name=f"TestCat-{uuid4().hex[:8]}", level=1)

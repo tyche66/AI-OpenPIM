@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 from uuid import UUID, uuid4
 
-from sqlalchemy import inspect as sa_inspect, select
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 

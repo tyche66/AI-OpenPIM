@@ -3,7 +3,6 @@
 Covers all acceptance criteria for permissions, security, and functionality.
 """
 
-import io
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -12,8 +11,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import create_access_token
-from app.models.audit import Share, ShareToken
+from app.models.audit import ShareToken
 from app.models.product import (
     Attachment,
     Brand,
@@ -24,7 +22,6 @@ from app.models.product import (
     Supplier,
     product_scene_image,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -647,7 +644,6 @@ async def test_share_token_expired_cannot_access(client: AsyncClient, db: AsyncS
     share_info = await _create_share_token(client, headers, str(proposal.id), expire_hours=1)
 
     # 将 token 的过期时间改为过去，模拟过期场景
-    from app.models.audit import ShareToken
     result = await db.execute(
         select(ShareToken).where(ShareToken.token == share_info["token"], ShareToken.is_deleted.is_(False))
     )

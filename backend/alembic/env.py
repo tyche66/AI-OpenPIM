@@ -1,22 +1,41 @@
 import os
-from alembic import context
-from sqlalchemy import pool, engine_from_config
-from logging.config import fileConfig
-
 import sys
 from os.path import abspath, dirname
 
+from sqlalchemy import engine_from_config, pool
+
+from alembic import context
+
 sys.path.insert(0, dirname(dirname(abspath(__file__))))
 
-from app.core.database import Base
+
+def _ensure_ci_defaults() -> None:
+    """Provide safe defaults for non-database settings when running under CI.
+
+    ``app.core.config.Settings`` requires ``JWT_SECRET``, ``REDIS_URL``, and the
+    ``MINIO_*`` triplet in addition to ``DATABASE_URL``. Local developers source
+    a populated ``.env`` before invoking ``alembic``, but CI migration jobs and
+    other isolated contexts (e.g. the empty-PG upgrade check) only inject
+    ``DATABASE_URL``. Without these defaults the import of ``settings`` raises
+    ``pydantic_core._pydantic_core.ValidationError`` and the migration never
+    starts. The values are placeholders that are never exercised by migrations
+    themselves (which only touch ``DATABASE_URL``).
+    """
+    ci_defaults = {
+        "JWT_SECRET": "alembic-ci-placeholder-secret",
+        "REDIS_URL": "redis://localhost:6379/0",
+        "MINIO_ENDPOINT": "localhost:9000",
+        "MINIO_ACCESS_KEY": "alembic-ci",
+        "MINIO_SECRET_KEY": "alembic-ci",
+    }
+    for key, value in ci_defaults.items():
+        os.environ.setdefault(key, value)
+
+
+_ensure_ci_defaults()
+
 from app.core.config import settings
-from app.models.user import User, Role, Permission, RolePermission
-from app.models.product import Product, Category, Brand, Supplier, Tag, ProductTag, Attachment, ProductImage, ProductManual
-from app.models.doc_chunk import ProductManualChunk
-from app.models.knowledge import KnowledgeChunk, KnowledgeDocument, KnowledgeIndexJob
-from app.models.ai_action import PendingAction
-from app.models.sales import Proposal, ProposalItem, Quotation, QuotationItem
-from app.models.audit import Share, ShareToken, ShareLog, Visitor, OperationLog, AIConversation
+from app.core.database import Base
 
 target_metadata = Base.metadata
 

@@ -16,16 +16,17 @@ Revision ID: 0011_add_media_permissions
 Revises: 0010_add_scene_image
 Create Date: 2026-07-21
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 from uuid import uuid4
 
-from alembic import op
 from sqlalchemy.sql import text
 
+from alembic import op
+
 revision: str = "0011_add_media_permissions"
-down_revision: Union[str, None] = "0010_add_scene_image"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0010_add_scene_image"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 NEW_PERMISSIONS = [
     ("media:view", "媒体库查看", "media", "view", "read"),

@@ -13,7 +13,7 @@
       <div class="logo">
         <img
           class="logo-img"
-          src="/OpenPIM-white.png"
+          src="/openPIM-white.png"
           alt="AI-PIM"
         >
       </div>

@@ -18,11 +18,12 @@ Revises: 0003_add_quotation_subtotal
 Create Date: 2026-07-15 00:00:00.000000
 
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 from uuid import NAMESPACE_DNS, uuid4, uuid5
 
-from alembic import op
 from sqlalchemy.sql import text
+
+from alembic import op
 
 # 迁移所创建「初始管理员」的稳定标识（ownership 锚点）。
 #
@@ -38,9 +39,9 @@ ADMIN_MIGRATION_ID = uuid5(NAMESPACE_DNS, "ai_pim.0004_seed_data.admin")
 
 # revision identifiers, used by Alembic.
 revision: str = "0004_seed_data"
-down_revision: Union[str, None] = "0003_add_quotation_subtotal"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0003_add_quotation_subtotal"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 # (role_code, role_name, description)
