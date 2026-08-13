@@ -25,7 +25,7 @@ jobs:
       git_commit: ${{ steps.meta.outputs.git_commit }}
       build_time: ${{ steps.meta.outputs.build_time }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Generate build metadata
@@ -68,8 +68,8 @@ jobs:
   backend-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -134,8 +134,8 @@ jobs:
       OCR_ADAPTER: none
       AI_PIM_TEST_DB_APPROVED: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -156,7 +156,7 @@ jobs:
           python -m pytest -q --junitxml=pytest.xml
       - name: Upload backend test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: backend-pytest-results
           path: backend/pytest.xml
@@ -196,8 +196,8 @@ jobs:
     env:
       DATABASE_URL: postgresql://pim:pim_password@localhost:5433/ai_pim_ci_empty
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -229,7 +229,7 @@ jobs:
                     > migration_baseline/hashes.txt
           cat migration_baseline/hashes.txt
       - name: Upload migration baseline
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: migration-baseline-hashes
           path: backend/migration_baseline/hashes.txt
@@ -240,8 +240,8 @@ jobs:
   frontend-typecheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -256,8 +256,8 @@ jobs:
   frontend-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -272,8 +272,8 @@ jobs:
   frontend-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -286,7 +286,7 @@ jobs:
         run: npx vitest run --reporter=default --reporter=junit --outputFile=vitest-results.xml
       - name: Upload vitest results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: frontend-vitest-results
           path: frontend/vitest-results.xml
@@ -300,8 +300,8 @@ jobs:
       GIT_COMMIT: ${{ needs.build-metadata.outputs.git_commit }}
       BUILD_TIME: ${{ needs.build-metadata.outputs.build_time }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -322,7 +322,7 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
         continue-on-error: false
       - name: Upload dist artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: frontend-dist
           path: frontend/dist
@@ -330,8 +330,8 @@ jobs:
   portal-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -343,7 +343,7 @@ jobs:
         working-directory: portal
         run: npm run build
       - name: Upload portal dist artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: portal-dist
           path: portal/dist
@@ -361,9 +361,9 @@ jobs:
       BUILD_TIME: ${{ needs.build-metadata.outputs.build_time }}
       APP_ENV: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - name: Build backend Docker image
         working-directory: backend
         run: |
@@ -394,7 +394,7 @@ jobs:
       BUILD_TIME: ${{ needs.build-metadata.outputs.build_time }}
       APP_ENV: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Docker Compose
         run: docker compose version
       - name: Validate docker-compose.yml
