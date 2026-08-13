@@ -89,7 +89,10 @@
                 {{ proposalContent?.customer_name || '-' }}
               </el-descriptions-item>
               <el-descriptions-item label="状态">
-                <el-tag :type="proposalContent?.status === 'confirmed' ? 'success' : 'info'" class="capsule-tag">
+                <el-tag
+                  :type="proposalContent?.status === 'confirmed' ? 'success' : 'info'"
+                  class="capsule-tag"
+                >
                   {{ statusMap[proposalContent?.status || ''] || proposalContent?.status }}
                 </el-tag>
               </el-descriptions-item>
@@ -177,7 +180,10 @@
                 <span class="mono-text">{{ quotationContent?.quotation_no || '-' }}</span>
               </el-descriptions-item>
               <el-descriptions-item label="状态">
-                <el-tag :type="quotationContent?.status === 'confirmed' ? 'success' : 'info'" class="capsule-tag">
+                <el-tag
+                  :type="quotationContent?.status === 'confirmed' ? 'success' : 'info'"
+                  class="capsule-tag"
+                >
                   {{ statusMap[quotationContent?.status || ''] || quotationContent?.status }}
                 </el-tag>
               </el-descriptions-item>

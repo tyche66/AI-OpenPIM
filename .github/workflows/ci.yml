@@ -110,7 +110,7 @@ jobs:
           --health-timeout 5s
           --health-retries 12
       minio:
-        image: minio/minio
+        image: minio/minio:RELEASE.2024-09-13T20-26-02Z
         env:
           MINIO_ROOT_USER: minio
           MINIO_ROOT_PASSWORD: minio12345
