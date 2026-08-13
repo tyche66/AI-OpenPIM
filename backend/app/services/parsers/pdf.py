@@ -13,7 +13,7 @@ class PdfTextParser(ParserProtocol):
     """Extract text from text-based PDFs. OCR is intentionally not performed."""
 
     name = "pypdf"
-    version = "5.1.0"
+    version = "6.15.0"
 
     async def parse(self, file_bytes: bytes, *, file_name: str = "") -> ParseResult:
         return await asyncio.to_thread(self._parse_sync, file_bytes)
