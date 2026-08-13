@@ -9,6 +9,10 @@
  * - 只在真的被别人套在 iframe 里、且 URL 显式带 `embed=1` 时才接收消息。
  * - 只接受来自父窗口、且 origin 在白名单内的消息，其余一律丢弃。
  * - 只写 localStorage，不把令牌回发给任何人。
+ * - 连不含密钥的 ready 握手也按白名单逐个 origin 发，不用 '*'：白名单外的父窗口
+ *   本来就拿不到令牌（下面 onMessage 会丢弃它的消息），对它广播「我在 embed 模式」
+ *   只是白送信息。代价是后台 dev 换端口时（例如 e2e 的 5273）握手会静默失败，
+ *   这时给门户设 VITE_ADMIN_ORIGIN=http://localhost:<后台端口> 即可。
  */
 
 const READY_MESSAGE = 'pim-embed-ready'
@@ -42,14 +46,26 @@ function allowedParentOrigins(): string[] {
 /**
  * 嵌入模式下，向父窗口要一次登录态。
  *
- * 已经有令牌就直接返回（生产同源的常态）。否则等父窗口回发，超时就放弃 ——
- * 放弃后路由守卫会把 /chat 弹回门户首页要求登录，不做假成功。
+ * ready 握手无论有没有令牌都要发：跨源的父窗口读不到 iframe 内容，这条消息是它
+ * 唯一能确认「门户真的跑起来了」的信号（生产同源时也一样，不然父窗口会误判超时）。
+ * 已经有令牌就发完直接返回；否则等父窗口回发，超时就放弃 —— 放弃后路由守卫会把
+ * /chat 弹回门户首页要求登录，不做假成功。
  */
 export function adoptParentSession(timeoutMs = 4000): Promise<void> {
   if (!isEmbedded()) return Promise.resolve()
-  if (localStorage.getItem('token')) return Promise.resolve()
 
   const allowed = allowedParentOrigins()
+  const announceReady = () => {
+    // 逐个白名单 origin 发；父窗口 origin 不匹配时浏览器会静默丢弃，等价于没发。
+    for (const origin of allowed) {
+      window.parent.postMessage({ type: READY_MESSAGE }, origin)
+    }
+  }
+
+  if (localStorage.getItem('token')) {
+    announceReady()
+    return Promise.resolve()
+  }
 
   return new Promise<void>((resolve) => {
     let settled = false
@@ -78,7 +94,7 @@ export function adoptParentSession(timeoutMs = 4000): Promise<void> {
     const timer = window.setTimeout(finish, timeoutMs)
     window.addEventListener('message', onMessage)
     // 监听挂好之后才通知父窗口，避免它先发我们后听。
-    window.parent.postMessage({ type: READY_MESSAGE }, '*')
+    announceReady()
   })
 }
 

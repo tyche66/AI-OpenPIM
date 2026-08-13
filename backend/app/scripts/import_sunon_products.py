@@ -1,4 +1,4 @@
-"""Idempotently import traceable sample pilot products from a reviewed JSON file."""
+"""Idempotently import traceable pilot pilot products from a reviewed JSON file."""
 
 import argparse
 import asyncio
@@ -132,7 +132,7 @@ async def import_records(records: list[dict[str, Any]], *, check_only: bool = Fa
                     )
                 )
                 if not brand and not check_only:
-                    brand = Brand(brand_name=record["brand_name"], description="Sample试点品牌")
+                    brand = Brand(brand_name=record["brand_name"], description="PILOT_SUPPLIER试点品牌")
                     db.add(brand)
                     await db.flush()
                 if check_only:
@@ -191,7 +191,7 @@ async def _main(path: Path, check_only: bool) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="导入Sample可追溯试点产品")
+    parser = argparse.ArgumentParser(description="导入PILOT_SUPPLIER可追溯试点产品")
     parser.add_argument("json_path", type=Path)
     parser.add_argument("--check", action="store_true", help="只执行预检，不写入")
     args = parser.parse_args()

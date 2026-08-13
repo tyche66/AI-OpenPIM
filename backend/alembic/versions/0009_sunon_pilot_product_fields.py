@@ -1,6 +1,6 @@
-"""pilot_product_fields
+"""sunon_pilot_product_fields
 
-Revision ID: 0009_pilot_product_fields
+Revision ID: 0009_sunon_pilot_product_fields
 Revises: 0008_v11_audit_workflow_ocr
 Create Date: 2026-07-17
 """
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "0009_pilot_product_fields"
+revision: str = "0009_sunon_pilot_product_fields"
 down_revision: str | None = "0008_v11_audit_workflow_ocr"
 branch_labels: str | tuple[str, ...] | None = None
 depends_on: str | tuple[str, ...] | None = None

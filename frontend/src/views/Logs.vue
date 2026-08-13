@@ -258,12 +258,12 @@
             >
               <el-table-column
                 prop="operate_time"
-                label="时间"
+                label="时间（北京时间）"
                 class-name="cell-num"
                 min-width="180"
               >
                 <template #default="{ row }">
-                  {{ formatLocalTime(row.operate_time) }}
+                  {{ formatBeijingTime(row.operate_time) }}
                 </template>
               </el-table-column>
               <el-table-column
@@ -354,6 +354,7 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { auditApi, statsApi } from '@/api'
+import { beijingLocalToInstant, formatBeijingTime } from '@/utils/beijingTime'
 
 const statsLoading = ref(false)
 
@@ -472,13 +473,11 @@ function responseCodeTagType(code: number | undefined): 'success' | 'warning' | 
   return 'info'
 }
 
-function formatLocalTime(utcOrIso: string | null): string {
-  if (!utcOrIso) return ''
-  // The backend stores naive timestamps in server local time (Asia/Shanghai).
-  // We surface them as-is to avoid timezone drift in the admin UI; if browser
-  // locale differs from server, this surfaces the raw string instead of mis-converting.
-  return String(utcOrIso).replace('T', ' ')
-}
+/**
+ * 操作日志时间统一按北京时间 24 小时制展示，筛选值反向换算成 UTC 瞬时。
+ * 换算规则和踩过的坑都在 utils/beijingTime.ts 里，单测见
+ * tests/unit/beijingTime.spec.ts。
+ */
 
 /**
  * 用户名取不到时退化显示用户编号前 8 位，完整值放在 title 属性里。
@@ -544,7 +543,9 @@ const fetchOperationLogs = async () => {
   try {
     const params: Record<string, unknown> = { page: auditPage.value, size: 20 }
     for (const [key, value] of Object.entries(auditFilters)) {
-      if (value !== '' && value !== undefined && value !== null) params[key] = value
+      if (value === '' || value === undefined || value === null) continue
+      params[key] =
+        key === 'start_time' || key === 'end_time' ? beijingLocalToInstant(String(value)) : value
     }
     const res = await auditApi.operationLogs(params) as any
     const data = res.data
@@ -574,8 +575,6 @@ onMounted(() => {
 
 .logs-page :deep(.el-card) {
   background: rgba(255, 255, 255, 0.68);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   border-radius: 28px;
   border: 1px solid rgba(255, 255, 255, 0.6);
   box-shadow: 0 4px 32px rgba(30, 50, 90, 0.06);

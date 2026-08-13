@@ -3,7 +3,7 @@
  * 能力入口条。构图对应 reeoo.com 首屏卡片下方那条分格统计条，
  * 但**不放任何数字**——门户没有可信的统计口径，编造数字比不显示更糟。
  *
- * 交互遵守门户设计规范：只把关键词
+ * 交互遵守 AI-Docs/Furnispace-PLP-Design-Skill.md §6.2：只把关键词
  * 预填进查询框，不自动发起查询，最后一步始终由用户按下发送。
  */
 const emit = defineEmits<{ pick: [text: string] }>()

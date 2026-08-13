@@ -23,6 +23,31 @@
       </div>
     </header>
 
+    <p
+      v-if="stalled"
+      class="portal-alert"
+      role="alert"
+    >
+      <span>
+        AI 选品工作台还没有响应：{{ handshakeTimeoutSeconds }} 秒内没有收到它的握手信号。
+        可以重新加载，或在新窗口打开单独排查。
+      </span>
+      <span class="portal-alert-tools">
+        <el-button
+          class="portal-btn"
+          @click="reload"
+        >
+          重新加载
+        </el-button>
+        <el-button
+          class="portal-btn"
+          @click="openStandalone"
+        >
+          新窗口打开
+        </el-button>
+      </span>
+    </p>
+
     <div class="portal-stage">
       <iframe
         ref="frameRef"
@@ -59,15 +84,33 @@
  * 开发环境两个应用在不同端口（5173 / 5174），localStorage 不共享，所以补一次
  * 「父窗口把令牌 postMessage 给子窗口」的交接：子窗口挂好监听后发
  * `pim-embed-ready`，父窗口只向确定的前台 origin 回发令牌，绝不用 '*'。
+ *
+ * 为什么不给 iframe 加 sandbox：生产同源嵌入靠的就是共享 localStorage 里的登录态，
+ * 而 sandbox 一旦不带 allow-same-origin 就会把 iframe 打成不透明 origin，登录态直接
+ * 断；要保住登录态就得同时给 allow-same-origin + allow-scripts，这两条一起加等于没有
+ * 沙箱（规范里明确说这种组合可以自行摘掉 sandbox 属性）。里面装的是我们自己的第一方
+ * 应用，所以这里只给最小的 allow=clipboard-write（复制答案需要），不摆样子加 sandbox。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
 
+/**
+ * 握手看门狗时长。跨源的 iframe 内容读不到，`load` 事件连错误页也会触发，所以
+ * 「工作台到底活没活」只能靠门户主动发的 `pim-embed-ready`。超时只是提示，不遮挡
+ * iframe：门户冷启动慢的时候提示会在握手到达后自动收掉，不做假失败也不做假成功。
+ */
+const HANDSHAKE_TIMEOUT_MS = 8000
+
 const frameRef = ref<HTMLIFrameElement | null>(null)
 const loaded = ref(false)
+const ready = ref(false)
+const stalled = ref(false)
 const reloadToken = ref(0)
+let watchdog = 0
+
+const handshakeTimeoutSeconds = Math.round(HANDSHAKE_TIMEOUT_MS / 1000)
 
 /**
  * 前台地址。生产同源留空即可（相对路径 /chat）；开发默认指向门户的 5174，
@@ -104,7 +147,17 @@ function handleMessage(event: MessageEvent) {
   if (event.source !== frameRef.value?.contentWindow) return
   if (event.origin !== targetOrigin.value) return
   if ((event.data as { type?: string } | null)?.type !== 'pim-embed-ready') return
+  ready.value = true
+  stalled.value = false
+  window.clearTimeout(watchdog)
   postSession()
+}
+
+function startWatchdog() {
+  window.clearTimeout(watchdog)
+  watchdog = window.setTimeout(() => {
+    if (!ready.value) stalled.value = true
+  }, HANDSHAKE_TIMEOUT_MS)
 }
 
 function handleLoad() {
@@ -113,7 +166,10 @@ function handleLoad() {
 
 function reload() {
   loaded.value = false
+  ready.value = false
+  stalled.value = false
   reloadToken.value = Date.now()
+  startWatchdog()
 }
 
 function openStandalone() {
@@ -122,10 +178,12 @@ function openStandalone() {
 
 onMounted(() => {
   window.addEventListener('message', handleMessage)
+  startWatchdog()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('message', handleMessage)
+  window.clearTimeout(watchdog)
 })
 </script>
 
@@ -146,8 +204,6 @@ onBeforeUnmount(() => {
   border-radius: var(--pim-radius-sm);
   background: var(--pim-glass);
   box-shadow: var(--pim-shadow);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
 }
 
 .portal-copy {
@@ -190,6 +246,28 @@ onBeforeUnmount(() => {
   background: #f7f6f2;
   box-shadow: var(--pim-shadow);
   overflow: hidden;
+}
+
+/* 握手超时提示走正常文档流，不做遮罩：工作台可能只是慢，遮住反而挡住可用的页面。 */
+.portal-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0;
+  padding: 12px 20px;
+  border: 1px solid #e6a23c;
+  border-radius: var(--pim-radius-sm);
+  background: rgba(230, 162, 60, 0.12);
+  color: var(--pim-text-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.portal-alert-tools {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
 }
 
 .portal-frame {

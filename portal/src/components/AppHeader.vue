@@ -2,7 +2,7 @@
 /**
  * 顶部品牌栏。整宽显示，不跟随内容列收窄；右侧动作由父级用默认插槽注入。
  */
-const logoUrl = '/openPIM.png'
+import logoUrl from '../../../logo/OpenPIM.png'
 </script>
 
 <template>

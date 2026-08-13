@@ -5,7 +5,7 @@
 # production regression (which need real services). Used to fast-fail before
 # pushing a release branch and as the authoritative gate during RC.
 #
-# Run from the repository root. Requires python (with backend venv
+# Run from the repo root (OpenPIM/). Requires python (with backend venv
 # or system python with requirements) and node for frontend.
 set -uo pipefail
 
@@ -63,7 +63,7 @@ gate "docker-compose.dev.yml config" \
 echo
 echo "=== Migration hash baseline (0001..0009 immutable) ==="
 gate "migration file hashes snapshot" \
-     "cd backend && sha256sum alembic/versions/0001_initial.py alembic/versions/0002_rag_polish.py alembic/versions/0003_add_quotation_subtotal.py alembic/versions/0004_seed_data.py alembic/versions/0005_fix_partial_unique.py alembic/versions/0006_add_manual_indexing.py alembic/versions/0007_add_manual_parse_metadata.py alembic/versions/0008_v11_audit_workflow_ocr.py alembic/versions/0009_pilot_product_fields.py > /tmp/ai-pim-migration-baseline.txt && diff <(cat alembic/versions/.migration_baseline.txt 2>/dev/null || true) /tmp/ai-pim-migration-baseline.txt; echo '(baseline snapshot refreshed)'"
+     "cd backend && sha256sum alembic/versions/0001_initial.py alembic/versions/0002_rag_polish.py alembic/versions/0003_add_quotation_subtotal.py alembic/versions/0004_seed_data.py alembic/versions/0005_fix_partial_unique.py alembic/versions/0006_add_manual_indexing.py alembic/versions/0007_add_manual_parse_metadata.py alembic/versions/0008_v11_audit_workflow_ocr.py alembic/versions/0009_sunon_pilot_product_fields.py > /tmp/ai-pim-migration-baseline.txt && diff <(cat alembic/versions/.migration_baseline.txt 2>/dev/null || true) /tmp/ai-pim-migration-baseline.txt; echo '(baseline snapshot refreshed)'"
 gate "alembic upgrade from empty PG16" \
      "command -v pg_ctl >/dev/null && PGPASSWORD=ci python -m alembic -c backend/alembic.ini upgrade head; if [ ! -f /usr/lib/postgresql/16/bin/pg_isready ]; then echo 'PG16 not present; CI migration gate runs in GitHub Actions'; true; fi" optional
 

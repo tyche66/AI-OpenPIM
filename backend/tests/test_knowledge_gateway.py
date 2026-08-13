@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from app.adapters.none import NoneAdapter
 from app.knowledge.events import sse_event
-from app.knowledge.gateway import _deterministic_answer
+from app.knowledge.gateway import _deterministic_answer, _params_for_tool
 from app.knowledge.model_gateway import AdapterModelGateway
 from app.knowledge.permission_pool import RoleBasedPoolResolver
 from app.knowledge.planner import RuleBasedPlanner
@@ -73,10 +73,10 @@ def test_planner_compare_and_security():
 
 def test_planner_extracts_chinese_product_search_terms_and_price_sort():
     planner = RuleBasedPlanner()
-    plan = planner.plan(KnowledgeQueryRequest(message="找出最便宜的示例系列办公桌"))
+    plan = planner.plan(KnowledgeQueryRequest(message="找出最便宜的铭达办公桌"))
 
     assert plan.intent == "product_search"
-    assert plan.entities.keywords == ["示例系列", "办公桌"]
+    assert plan.entities.keywords == ["铭达", "办公桌"]
 
 
 def test_planner_extracts_unknown_short_category_as_fallback_search_term():
@@ -85,6 +85,28 @@ def test_planner_extracts_unknown_short_category_as_fallback_search_term():
     assert plan.entities.keywords == ["洽谈桌"]
     assert plan.required_tools == ["product.search"]
     assert plan.entities.price_sort == "asc"
+
+
+def test_planner_keeps_mixed_tag_and_specification_number():
+    plan = RuleBasedPlanner().plan(KnowledgeQueryRequest(message="MT有3000的会议桌吗"))
+
+    assert plan.entities.keywords == ["MT", "3000", "会议桌"]
+    assert plan.entities.price_max is None
+
+
+def test_planner_extracts_explicit_price_bound_without_turning_it_into_keyword():
+    plan = RuleBasedPlanner().plan(KnowledgeQueryRequest(message="预算3000元以内的会议桌"))
+
+    assert plan.entities.keywords == ["会议桌"]
+    assert plan.entities.price_max == 3000
+    assert (
+        _params_for_tool(
+            "product.search",
+            plan,
+            KnowledgeQueryRequest(message="预算3000元以内的会议桌"),
+        )["filters"]["face_price_max"]
+        == 3000
+    )
 
 
 def test_planner_routes_natural_language_to_knowledge_retrieval():
@@ -102,14 +124,14 @@ def test_price_sorted_products_return_the_cheapest_product():
     answer = _deterministic_answer(
         plan,
         facts=[],
-        products=[{"product_name": "示例洽谈桌 SAMPLE-TABLE-001", "face_price_display": 3130}],
+        products=[{"product_name": "铭达洽谈桌 EMD70.095095", "face_price_display": 3130}],
         sources=[],
         issues=[],
         suppliers=[],
         pending_actions=[],
     )
 
-    assert answer == "当前最低面价为 示例洽谈桌 SAMPLE-TABLE-001，面价 3130。"
+    assert answer == "当前最低面价为 铭达洽谈桌 EMD70.095095，面价 3130。"
 
 
 def test_price_sorted_products_return_the_most_expensive_product():
@@ -117,7 +139,7 @@ def test_price_sorted_products_return_the_most_expensive_product():
     answer = _deterministic_answer(
         plan,
         facts=[],
-        products=[{"product_name": "示例会议桌 SAMPLE-MEETING-001", "face_price_display": 16810}],
+        products=[{"product_name": "铭达会议桌 EMD78.480160", "face_price_display": 16810}],
         sources=[],
         issues=[],
         suppliers=[],
@@ -125,7 +147,7 @@ def test_price_sorted_products_return_the_most_expensive_product():
     )
 
     assert plan.entities.price_sort == "desc"
-    assert answer == "当前最高面价为 示例会议桌 SAMPLE-MEETING-001，面价 16810。"
+    assert answer == "当前最高面价为 铭达会议桌 EMD78.480160，面价 16810。"
 
 
 def test_planner_and_answer_support_longest_product_specification():
@@ -135,7 +157,7 @@ def test_planner_and_answer_support_longest_product_specification():
         facts=[],
         products=[
             {
-                "product_name": "示例会议桌 SAMPLE-MEETING-001",
+                "product_name": "铭达会议桌 EMD78.480160",
                 "specification_length_mm": 4800,
             }
         ],
@@ -147,7 +169,7 @@ def test_planner_and_answer_support_longest_product_specification():
 
     assert plan.entities.keywords == ["桌子"]
     assert plan.entities.specification_sort == "desc"
-    assert answer == "当前最长的产品为 示例会议桌 SAMPLE-MEETING-001，长度 4800 mm。"
+    assert answer == "当前最长的产品为 铭达会议桌 EMD78.480160，长度 4800 mm。"
 
 
 def test_permission_pool_projection_rules():

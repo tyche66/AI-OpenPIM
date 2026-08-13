@@ -13,7 +13,7 @@
       <div class="logo">
         <img
           class="logo-img"
-          src="/openPIM-white.png"
+          src="/OpenPIM-white.png"
           alt="AI-PIM"
         >
       </div>
@@ -133,8 +133,8 @@
           >
             <span class="avatar">{{ userInitial }}</span>
             <span class="user-copy">
+              <small class="user-label">当前用户</small>
               <strong>{{ displayName }}</strong>
-              <small>{{ authStore.userRoleCode || '团队成员' }}</small>
             </span>
           </button>
         </div>
@@ -161,6 +161,7 @@
       <div class="account-identity">
         <span class="avatar avatar--lg">{{ userInitial }}</span>
         <span class="account-copy">
+          <small class="account-label">当前用户</small>
           <strong>{{ displayName }}</strong>
           <small>{{ authStore.userRoleCode || '团队成员' }}</small>
         </span>
@@ -270,8 +271,16 @@ const routeLabels: Record<string, [string, string]> = {
 const currentLabels = computed(() => routeLabels[route.path.split('/')[1]] || ['工作台', 'AI-PIM'])
 const pageSection = computed(() => currentLabels.value[0])
 const pageTitle = computed(() => route.params.id ? `${currentLabels.value[1]}详情` : currentLabels.value[1])
-// 顶栏只显示真实用户名。/auth/me 还没回来时给出中性占位，不用「当前用户」冒名顶替。
-const displayName = computed(() => authStore.currentUser?.username || '加载中…')
+// 顶栏只显示真实用户名。「当前用户」是标签，不参与占位——不用它冒名顶替真实用户名。
+// profileResolved 标记「/auth/me 这一轮已经跑完」：ensureUser() 失败是静默的
+// （stores/auth.ts:114-119），跑完还拿不到 profile 就必须把文案从「加载中…」切走，
+// 否则会永久显示加载中骗用户。这里给中性文案，不编造名字、也不把 JWT 里的 uuid 摊给用户看。
+const profileResolved = ref(false)
+const displayName = computed(() => {
+  const name = authStore.currentUser?.username
+  if (name) return name
+  return profileResolved.value ? '未知用户' : '加载中…'
+})
 const userInitial = computed(() => (authStore.currentUser?.username || 'AI').slice(0, 1).toUpperCase())
 
 watch(() => route.fullPath, () => {
@@ -280,8 +289,13 @@ watch(() => route.fullPath, () => {
 })
 
 // 顶栏要显示用户名，profile 可能还没被 init() 拉到（例如刷新时 /auth/me 抖动）。
-onMounted(() => {
-  if (!authStore.currentUser) void authStore.ensureUser()
+// 无论成功失败都要落 profileResolved，否则失败分支会把「加载中…」钉死在顶栏。
+onMounted(async () => {
+  try {
+    if (!authStore.currentUser) await authStore.ensureUser()
+  } finally {
+    profileResolved.value = true
+  }
 })
 
 const handleLogout = async () => {
@@ -401,7 +415,6 @@ const handleSwitchUser = async () => {
   border-radius: 28px;
   background: rgba(255, 255, 255, 0.62);
   box-shadow: 0 14px 45px rgba(30, 50, 90, 0.06);
-  backdrop-filter: blur(20px);
   display: flex;
   align-items: center;
 }
@@ -477,12 +490,19 @@ const handleSwitchUser = async () => {
   color: rgba(30, 50, 90, 0.88);
   font-size: 13px;
   font-weight: 400;
+  /* 用户名长度不可控，给个上限并省略号收尾，免得把标题挤换行。 */
+  max-width: 168px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
+/* 标签行：字号/字距对齐同文件的 .eyebrow，视觉上弱于用户名。 */
 .user-copy small {
   color: rgba(30, 50, 90, 0.48);
   font-size: 10px;
-  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  white-space: nowrap;
 }
 
 .account-identity {
@@ -608,9 +628,18 @@ const handleSwitchUser = async () => {
     border-radius: 22px;
   }
 
-  .eyebrow,
-  .user-copy {
+  .eyebrow {
     display: none;
+  }
+
+  /* 小屏只隐藏「当前用户」标签行，用户名必须留着——不然移动端看不出登录的是谁。 */
+  .user-copy small {
+    display: none;
+  }
+
+  /* 顶栏宽度只剩 375-2*8-2*12=335px，用户名限宽收窄，给标题留出不换行的空间。 */
+  .user-copy strong {
+    max-width: 76px;
   }
 
   .header-heading h1 {
@@ -618,7 +647,9 @@ const handleSwitchUser = async () => {
   }
 
   .user-chip {
-    padding: 3px;
+    /* 小屏仍要显示用户名，右侧留出内边距，别让文字贴着 chip 边缘。 */
+    padding: 3px 10px 3px 3px;
+    gap: 8px;
   }
 
   .avatar {

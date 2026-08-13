@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import io
 from collections.abc import Iterator
@@ -5,7 +6,7 @@ from urllib.parse import quote
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,12 +16,35 @@ from app.core.minio_client import get_minio_client
 from app.core.permission import PermissionChecker
 from app.core.security import create_access_token, decode_access_token
 from app.middleware.audit import audit_action
-from app.models.product import Attachment, Product, ProductImage, ProductManual, SceneImage, product_scene_image
+from app.models.product import (
+    Attachment,
+    Product,
+    ProductImage,
+    ProductManual,
+    SceneImage,
+    product_scene_image,
+)
 from app.schemas.file import FilePresignResponse, FileReferences, FileUploadResponse
+from app.services.thumbnails import THUMB_WIDTHS, purge_thumbnails, thumbnail_bytes
 
 router = APIRouter()
 
 ALLOWED_FILE_TYPES = frozenset({"image", "video", "pdf", "doc", "other"})
+
+# 媒体库列表的排序白名单。键就是前端下拉框的值（MediaLibrary.vue 的 sortBy）。
+#
+# 每一项都必须以 id 结尾：create_time 在库里远不是唯一的（一次带图导入会把几千行
+# 写成同一个时间戳，实测 3104 行只有 25 个不同的 create_time），只按它排的话
+# OFFSET/LIMIT 每次翻页拿到的顺序都可能不一样 —— 同一个文件在两页里都出现，
+# 另一个文件哪一页都进不去。实测 32 页 × 100 条共 3104 行里只有 2628 个不同 id，
+# 476 个文件翻不到。id 是主键，作为末位比较键就能让整体顺序唯一确定。
+_SORT_ORDERS = {
+    "newest": lambda: (Attachment.create_time.desc(), Attachment.id.desc()),
+    "nameAsc": lambda: (Attachment.file_name.asc(), Attachment.id.asc()),
+    "nameDesc": lambda: (Attachment.file_name.desc(), Attachment.id.desc()),
+    "size": lambda: (Attachment.file_size.desc(), Attachment.id.desc()),
+}
+_DEFAULT_SORT = "newest"
 
 _ALLOWED = {
     "image/jpeg": ("image", 50 * 1024 * 1024),
@@ -75,12 +99,22 @@ def _iter_minio_object(obj) -> Iterator[bytes]:
         obj.release_conn()
 
 
+# ---------------------------------------------------------------------------
+# 缩略图
+# ---------------------------------------------------------------------------
+# 实现在 app/services/thumbnails.py：那边是叶子模块（只依赖 core.config /
+# core.minio_client），tests/unit 能直接测；本文件为了 get_db 牵连
+# app.core.database，按 tests/unit/conftest.py 的约定进不了单元层。
+# 这里只负责校验宽度白名单、把阻塞调用丢进线程。
+
+
 @router.get("", response_model=dict, dependencies=[Depends(PermissionChecker("media:view"))])
 async def list_files(
     request: Request,
     keyword: str | None = None,
     file_type: str | None = None,
     referenced: bool | None = None,
+    sort: str = Query(_DEFAULT_SORT),
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -98,6 +132,12 @@ async def list_files(
                 detail={"code": 42201, "msg": f"不支持的文件类型筛选: {file_type}"},
             )
         query = query.where(Attachment.file_type == file_type)
+
+    if sort not in _SORT_ORDERS:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": 42206, "msg": f"不支持的排序方式: {sort}，可选 {list(_SORT_ORDERS)}"},
+        )
 
     if referenced is not None:
         has_product_image = (
@@ -123,7 +163,7 @@ async def list_files(
     total_result = await db.execute(select(func.count()).select_from(query.subquery()))
     total = total_result.scalar()
 
-    query = query.order_by(Attachment.create_time.desc())
+    query = query.order_by(*_SORT_ORDERS[sort]())
     query = query.offset((page - 1) * size).limit(size)
     result = await db.execute(query)
     attachments = result.scalars().all()
@@ -507,6 +547,7 @@ async def replace_file(
         client.remove_object(settings.MINIO_BUCKET, old_oss_key)
     except Exception:
         pass
+    purge_thumbnails(client, old_oss_key)
 
     try:
         preview_url = _create_content_url(request, attachment.id)
@@ -561,6 +602,10 @@ async def delete_file(request: Request, attachment_id: UUID, db: AsyncSession = 
 async def get_file_content(
     attachment_id: UUID,
     token: str = Query(...),
+    w: int | None = Query(
+        None,
+        description=f"图片缩略宽度（短边），仅支持 {list(THUMB_WIDTHS)}；不传则返回原图",
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     payload = decode_access_token(token)
@@ -577,6 +622,34 @@ async def get_file_content(
     attachment = result.scalar_one_or_none()
     if not attachment:
         raise HTTPException(status_code=404, detail={"code": 40401, "msg": "附件不存在"})
+
+    # 宽度只认白名单里的档位：否则任意 w 都会在 MinIO 里堆一份缓存对象，
+    # 等于给了一个免费的放大器。写错档位要报错而不是静默回原图，不然前端
+    # 一旦写错值就悄悄退回「拿 1200 万像素画 48px」的老样子，没人会发现。
+    if w is not None and w not in THUMB_WIDTHS:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": 42205, "msg": f"不支持的缩略宽度 {w}，可选 {list(THUMB_WIDTHS)}"},
+        )
+
+    # 非图片附件（pdf/doc/video）没有缩略形态，带了 w 也按原文件发。
+    if w is not None and attachment.file_type == "image":
+        try:
+            thumb = await asyncio.to_thread(thumbnail_bytes, attachment.oss_key, w)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": 40402, "msg": "文件对象不存在或无法读取"},
+            ) from exc
+        stem = attachment.file_name.rsplit(".", 1)[0] or attachment.file_name
+        return Response(
+            content=thumb,
+            media_type="image/webp",
+            headers={
+                "Content-Disposition": f"inline; filename*=UTF-8''{quote(stem)}.webp",
+                "Cache-Control": f"private, max-age={_PREVIEW_EXPIRE_SECONDS}",
+            },
+        )
 
     client = get_minio_client()
     try:

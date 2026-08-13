@@ -60,7 +60,8 @@ describe('Logs.vue', () => {
       data: {
         list: [
           {
-            operate_time: '2026-07-20T08:00:00',
+            // 后端 operate_time 是 timestamptz，序列化成 UTC 瞬时（带 Z）。
+            operate_time: '2026-07-20T08:00:00Z',
             action: 'login',
             module: 'auth',
             user_id: 'admin-uuid',
@@ -70,7 +71,8 @@ describe('Logs.vue', () => {
             ip: '127.0.0.1',
           },
           {
-            operate_time: '2026-07-20T09:00:00',
+            // 跨日：UTC 16:30 是北京时间次日 00:30，24 小时制下必须是 00 而不是 24。
+            operate_time: '2026-07-20T16:30:00Z',
             action: 'login_failed',
             module: 'auth',
             user_id: null,
@@ -80,6 +82,8 @@ describe('Logs.vue', () => {
             ip: '203.0.113.7',
           },
           {
+            // 万一某天后端回了不带时区标记的值，也按 UTC 解析（列本身是 timestamptz），
+            // 不能跟着跑测试的机器时区飘。
             operate_time: '2026-07-20T10:00:00',
             action: 'product_create',
             module: 'products',
@@ -118,8 +122,17 @@ describe('Logs.vue', () => {
     expect(wrapper.text()).toContain('401')
     expect(wrapper.text()).toContain('500')
 
-    // Time is shown with a space instead of 'T' separator (localized display).
-    expect(wrapper.text()).toContain('2026-07-20 08:00:00')
+    // 时间列固定按北京时间（UTC+8）24 小时制展示，列头也要说清口径。
+    // 这里断的是「UTC 瞬时 → +8 小时」的换算，不是「把 T 换成空格」——
+    // 后者曾经把 UTC 当本地时间贴出来，比北京时间慢 8 小时。
+    expect(wrapper.text()).toContain('时间（北京时间）')
+    expect(wrapper.text()).toContain('2026-07-20 16:00:00')
+    expect(wrapper.text()).not.toContain('2026-07-20 08:00:00')
+    // 跨日 + 零点：00:30，不能出现 24:30。
+    expect(wrapper.text()).toContain('2026-07-21 00:30:00')
+    expect(wrapper.text()).not.toContain('24:30:00')
+    // 不带时区标记的值按 UTC 解析（10:00Z → 18:00 北京），不跟随本机时区。
+    expect(wrapper.text()).toContain('2026-07-20 18:00:00')
   })
 
   it('renders an empty state when there are no audit records', async () => {

@@ -111,36 +111,36 @@ def main():
 
     status, _, data = request(opener, args.base_url, "brands", token)
     brands = data.get("data", {}).get("list", [])
-    check(11, "sample brand exists", status == 200 and any(x.get("brand_name") == "Sample Brand" for x in brands))
+    check(11, "pilot brand exists", status == 200 and any(x.get("brand_name") == "pilot" for x in brands))
 
     status, _, data = request(opener, args.base_url, "suppliers", token)
     suppliers = data.get("data", {}).get("list", [])
-    sample_supplier = next((x for x in suppliers if x.get("supplier_name") == "Sample Supplier"), None)
-    check(12, "sample supplier exists", status == 200 and sample_supplier is not None)
+    pilot_supplier = next((x for x in suppliers if x.get("supplier_name") == "pilot"), None)
+    check(12, "pilot supplier exists", status == 200 and pilot_supplier is not None)
 
     status, _, data = request(opener, args.base_url, "tags", token)
     tags = data.get("data", {}).get("list", [])
-    sample_series = next((x for x in tags if x.get("tag_name") == "示例系列" and x.get("tag_type") == "series"), None)
-    style = next((x for x in tags if x.get("tag_name") == "现代" and x.get("tag_type") == "style"), None)
-    check(13, "sample series tag exists", status == 200 and sample_series is not None)
+    mingda = next((x for x in tags if x.get("tag_name") == "铭达" and x.get("tag_type") == "series"), None)
+    style = next((x for x in tags if x.get("tag_name") == "新中式" and x.get("tag_type") == "style"), None)
+    check(13, "Mingda series tag exists", status == 200 and mingda is not None)
     check(14, "pilot style tag exists", style is not None)
 
     status, _, data = request(opener, args.base_url, "products?page=1&size=20", token)
     products = data.get("data", {}).get("list", [])
-    check(15, "product list contract", status == 200 and data.get("data", {}).get("total", 0) >= 3)
+    check(15, "product list contract", status == 200 and data.get("data", {}).get("total", 0) >= 13)
 
-    query = urllib.parse.urlencode({"tag_ids": sample_series["id"], "page": 1, "size": 20})
+    query = urllib.parse.urlencode({"tag_ids": mingda["id"], "page": 1, "size": 20})
     status, _, data = request(opener, args.base_url, f"products?{query}", token)
     pilot = data.get("data", {}).get("list", [])
-    check(16, "sample series filter returns products", status == 200 and len(pilot) >= 3, f"count={len(pilot)}")
-    check(17, "sample product numbers are unique", len({x.get("product_no") for x in pilot}) == len(pilot) and all(x.get("product_no", "").startswith("SAMPLE-") for x in pilot))
+    check(16, "Mingda series filter returns 13", status == 200 and len(pilot) == 13, f"count={len(pilot)}")
+    check(17, "pilot product numbers are unique EMD", len({x.get("product_no") for x in pilot}) == 13 and all(x.get("product_no", "").startswith("EMD") for x in pilot))
     check(18, "placeholder pricing is marked pending", all(x.get("face_price") == 99999 and x.get("completeness_status") == "pending" for x in pilot))
     check(19, "pilot stock remains unknown", all(x.get("stock_status") == "unknown" for x in pilot))
-    check(20, "sample tags are linked", all({"示例系列", "现代"}.issubset(set(x.get("tags", []))) for x in pilot))
+    check(20, "pilot tags are linked", all({"铭达", "新中式"}.issubset(set(x.get("tags", []))) for x in pilot))
 
-    detail_id = next((x["id"] for x in pilot if x.get("product_no") == "SAMPLE-DESK-001"), "")
+    detail_id = next((x["id"] for x in pilot if x.get("product_no") == "EMD89R.320190"), "")
     status, _, detail = request(opener, args.base_url, f"products/{detail_id}", token)
-    check(21, "sample detail provenance", status == 200 and detail.get("specification") == "W1800*D800*H750 mm" and bool(detail.get("data_source")))
+    check(21, "pilot detail provenance", status == 200 and detail.get("specification") == "W3200*D1900*H750 mm" and bool(detail.get("data_source")))
 
     status, _, data = request(opener, args.base_url, "products?min_price=100&page=1&size=20", token)
     priced = data.get("data", {}).get("list", [])
@@ -151,7 +151,7 @@ def main():
     check(23, "manual parser states are terminal", status == 200 and len(manuals) >= 1 and all(x.get("parse_status") in {"pending", "parsed", "failed", "ocr_required"} for x in manuals))
 
     status, headers, exported = request(opener, args.base_url, f"products/export?{query}", token)
-    check(24, "authenticated filtered Excel export", status == 200 and int(headers.get("X-Total-Count", "0")) >= 3 and isinstance(exported, bytes) and exported.startswith(b"PK"), str(status))
+    check(24, "authenticated filtered Excel export", status == 200 and headers.get("X-Total-Count") == "13" and isinstance(exported, bytes) and exported.startswith(b"PK"), str(status))
 
     status, _, _ = request(opener, args.base_url, "ai/chat", token, method="POST", body={"message": "health check", "stream": False})
     check(25, "AI routes fail closed while disabled", status == 503, str(status))
