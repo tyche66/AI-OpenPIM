@@ -67,13 +67,7 @@ The current local production stack exposes nginx on `888:80`. PostgreSQL, Redis,
 
 The application bucket is `ai-pim`. Products, scene images, manuals, and attachments are stored in MinIO. Derived thumbnails use `derived/thumb/w{width}/...` and may be rebuilt from original objects.
 
-See:
-
-- [Storage volumes](docs/数据卷与持久化存储.md)
-- [MinIO operations](docs/MinIO对象存储.md)
-- [Operations runbook](README-OPS.md)
-- [Full migration bundle](MIGRATION_BUNDLE.md)
-- [Cloud update package](docs/云端更新包.md)
+See [docs/04-接口规范(OpenAPI).md](docs/04-接口规范(OpenAPI).md) for the API contract. Deployment, storage, and service configuration live in `docker-compose.yml`, `docker-compose.dev.yml`, and `.env.example`.
 
 ## API Documentation
 
@@ -96,11 +90,9 @@ For the complete release gate, use `bash scripts/release_gate.sh`. Database inte
 
 - `README.md`: Chinese project overview
 - `README_EN.md`: English project overview
-- `README-OPS.md`: current machine operations and recovery runbook
-- `docs/`: current product, architecture, API, deployment, storage, and test documentation
-- `docs/过时/`: archived design, planning, review, delivery, and superseded deployment documents
-- `AI-Docs/`: independent pluggable AI architecture, planning, governance, and extension documentation
-- `RELEASE_GATE.md`: release checks
+- `docs/04-接口规范(OpenAPI).md`: maintained API contract
+- `docs/appendix/`: data dictionary, permission matrix, glossary, audit implementation notes
+- `backend/README.md`: backend module notes
 - `CHANGELOG.md`: release history
 
 ## Security

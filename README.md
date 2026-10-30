@@ -25,7 +25,7 @@ OpenPIM 是当前这套 AI-PIM 项目的工作快照，面向产品信息管理�
 | 项目项 | 当前状态 |
 | --- | --- |
 | 仓库根目录 | `OpenPIM/`（Windows：`E:\OpenPIM`；WSL：`/mnt/e/OpenPIM`） |
-| 开发 / 运行方式 | Windows 侧编辑，WSL 发行版 `OpenPIM` 内构建运行（见 [docs/Windows开发与WSL构建.md](docs/Windows开发与WSL构建.md)） |
+| 开发 / 运行方式 | Windows 侧编辑，WSL 发行版 `OpenPIM` 内构建运行 |
 | 后端 | `backend/`，FastAPI + SQLAlchemy + Alembic |
 | 前端 | `frontend/`，Vue 3 + Vite + Element Plus + Pinia |
 | AI 门户 | `portal/`，独立 AI 对话门户 |
@@ -41,11 +41,6 @@ OpenPIM 是当前这套 AI-PIM 项目的工作快照，面向产品信息管理�
 | 生产入口 | `http://127.0.0.1:888/`（Docker nginx `888:80`；门户 / 分享页 `/share/{token}` / `/admin/` / `/api/v1/*`） |
 | 管理后台入口 | `http://127.0.0.1:888/admin/`（生产 nginx；`:888/admin` 会 301 到带尾斜杠的） |
 | 环境体检 | `bash scripts/where-am-i.sh`（**每次开工第一条命令**） |
-| 实机运维口径 | [README-OPS.md](README-OPS.md)、`/home/AI-PIM/从启动到穿透.md` |
-| 整机迁移 / 灾难恢复 | [MIGRATION_BUNDLE.md](MIGRATION_BUNDLE.md)（全量备份迁移包怎么打、怎么恢复） |
-| 云端生产升级 | [docs/云端更新包.md](docs/云端更新包.md) |
-| 数据卷 | [docs/数据卷与持久化存储.md](docs/数据卷与持久化存储.md) |
-| MinIO | [docs/MinIO对象存储.md](docs/MinIO对象存储.md) |
 | 主要种子入口 | `backend/app/scripts/seed_data.py` + `backend/alembic/versions/0004_seed_data.py` |
 | 产品试点数据文件 | `backend/data/pilot_products.json` |
 
@@ -70,9 +65,7 @@ OpenPIM 是当前这套 AI-PIM 项目的工作快照，面向产品信息管理�
 - `.env.example`：根级环境变量示例
 - `.env`：当前本地开发环境变量
 - `scripts/`：环境体检（`where-am-i.sh`）、前端构建（`build_frontends.sh`）、演示服务器、备份、恢复、健康检查、TLS 生成、发布门禁等脚本
-- `docs/`：当前需求、架构、数据库、接口、部署、测试和存储文档
-- `docs/过时/`：历史设计、规划、审查和旧部署文档，仅供追溯
-- `AI-Docs/`：独立的可插拔 AI 设计、规划和扩展文档
+- `docs/`：API 接口规范与数据字典等参考文档
 - `backups/`：数据库备份与恢复演练文件
 - `docker/`：Nginx、Postgres 初始化、OCR 容器等基础设施配置
 
@@ -198,9 +191,7 @@ tailscale funnel 888
 
 ### 2. 生产 / 容器化环境
 
-> 本机（Windows 11 + Docker Desktop + WSL 发行版 `OpenPIM`）的实机口径见
-> [README-OPS.md](README-OPS.md) 的「这台机器的实机真相」与 `/home/AI-PIM/从启动到穿透.md`。
-> 下面是通用流程。
+> 下面是在 Windows 11 + Docker Desktop + WSL 发行版 `OpenPIM` 上验证过的通用流程。
 
 ```bash
 # 1) 配置环境变量
@@ -445,7 +436,7 @@ PYTHONPATH=. pytest
 `app.core.database` 的叶子模块。撞上了要去改应用的 import 链，不要把整个 app 拖进单元层。
 
 这台实机的宿主 python 是 3.14，缺 `pgvector` / `pytest-asyncio` / `pillow` 且 PEP 668 不让往系统装，
-`pytest` 会直接 collect 失败——临时 venv 的配方见 `README-OPS.md` 排障「在宿主机跑 `backend/tests`」。
+`pytest` 会直接 collect 失败——需要单独建一个装有 `pgvector`、`pytest-asyncio`、`pillow` 的虚拟环境。
 
 ### 测试数据库
 
@@ -488,21 +479,13 @@ npm run build
 
 ## 文档
 
-- `docs/00-项目概述.md`
-- `docs/01-产品需求(PRD).md`
-- `docs/02-系统架构与设计(HLD).md`
-- `docs/03-数据库设计(ERD).md`
-- `docs/04-接口规范(OpenAPI).md`
-- `docs/05-业务流程(BPM).md`
-- `docs/06-部署方案.md`
-- `docs/07-开发规范.md`
-- `docs/08-开发路线图.md`
-- `docs/09-测试计划.md`
-- `AI-Docs/README.md`：可插拔 AI 设计与规划总入口
-- `docs/过时/README.md`：历史文档归档说明
-- `MIGRATION_BUNDLE.md`：全量迁移包制作与恢复
-- `README-OPS.md`：当前实机运维 runbook
-- `RELEASE_GATE.md`：发布门禁
+- `docs/04-接口规范(OpenAPI).md`：人工维护的 API 接口规范
+- `docs/appendix/数据字典.md`：表与字段说明
+- `docs/appendix/权限矩阵.md`：角色与权限码对照
+- `docs/appendix/名词解释.md`：术语表
+- `docs/appendix/audit-impl-notes.md`：审计动作实现说明
+- `CHANGELOG.md`：发布历史
+- `backend/README.md`：后端模块说明
 
 ## 运行约定
 

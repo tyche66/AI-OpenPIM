@@ -1,21 +1,19 @@
 # CHANGELOG
 
-本文件是**「当前版本号」的唯一现值来源**。别的文档要么引用这里，要么写的是历史记录（见下面「不要去改的历史记录」）。
-版本号规则（语义化版本、锚点、annotated tag）见 `版本控制规范和Git.md` §1 / §1.1。
+本文件是**「当前版本号」的唯一现值来源**，版本号遵循语义化版本，发布时打 annotated tag。
 
 ## 改版本号要动哪几处
 
-发一个新版本 `vX.Y.Z` 时，**手改这 7 处，一处不能漏**：
+发一个新版本 `vX.Y.Z` 时，**手改这 6 处，一处不能漏**：
 
 | # | 位置 | 说明 |
 | --- | --- | --- |
-| 1 | `frontend/package.json` → `version` | 规范 §1 指定的版本锚点，先改这里 |
+| 1 | `frontend/package.json` → `version` | 版本锚点，先改这里 |
 | 2 | `portal/package.json` → `version` | 必须和 1 完全一致（门户和后台同版发布） |
 | 3 | `backend/app/core/config.py` → `VERSION` | `APP_VERSION` 没注入时的兜底值，兜底值也必须是真话 |
 | 4 | 本文件顶部 | 新增一节 `## vX.Y.Z — YYYY-MM-DD` 并写清变更 |
 | 5 | `README.md` 概览表 → 「当前版本」 | 迁移有变时同时更新「当前迁移 head」 |
-| 6 | `AI-Docs/README.md` 头部 → 「当前版本」 | |
-| 7 | annotated tag | `git tag -a vX.Y.Z -m "..."` + `git push origin vX.Y.Z` |
+| 6 | annotated tag | `git tag -a vX.Y.Z -m "..."` + `git push origin vX.Y.Z` |
 
 自动派生，**不要手改**：
 
@@ -24,7 +22,7 @@
 - `APP_VERSION` / `BUILD_ID` / `GIT_COMMIT` / `BUILD_TIME`：构建期注入（`backend/Dockerfile` 的 ARG→ENV、`docker-compose.yml` 的 build args、CI 的 `build-metadata` job）。
 - 后端接口不返回前端版本。以前 `/api/v1/version` 返回过 `frontend_version`，值是抄的 `backend_version`，前后端真不同版时也显示一致，已删除并由 `backend/tests/test_version.py` 锁住不许加回来。
 
-**不要去改的历史记录**（改了就是篡改发布史）：`BUILD_LOG.md` 的构建记录、`PROJECT_MANAGEMENT.md` 的发布台账、`TODO.md` 的「已发布」条目、`docs/08-开发路线图.md` 的里程碑行。`RELEASE_GATE.md` 已改成版本无关，不需要跟着版本走。
+**历史发布记录以 Git tag 和提交历史为准，不回改已发布内容。**
 
 ## v1.9.8 — 2026-10-30
 

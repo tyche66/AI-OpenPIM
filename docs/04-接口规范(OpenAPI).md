@@ -1279,7 +1279,7 @@ location /api/v1/ai/chat {
 
 业务层通过 `AIServiceAdapter` 抽象基类调用 AI 能力，统一抹平 FastGPT/Dify/RagFlow 的 API 差异。
 
-> 详细接口定义与实现规范见 [02-系统架构与设计(HLD)](./02-系统架构与设计(HLD).md) 第三章。核心方法签名：
+> 核心方法签名：
 
 | 方法 | 说明 |
 | --- | --- |
@@ -1288,7 +1288,7 @@ location /api/v1/ai/chat {
 | `parse_tool_calls(raw_response)` | 统一解析 Tool Call 格式 |
 | `manage_session(action, session_id)` | 会话生命周期管理（创建/拉取/删除） |
 
-新增 AI 引擎适配器步骤见 [07-开发规范](./07-开发规范.md) 第五章。
+新增 AI 引擎适配器：在 `backend/app/adapters/` 下实现 `AIServiceAdapter` 子类并在工厂中注册。
 
 ---
 
