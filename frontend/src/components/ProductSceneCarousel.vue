@@ -97,6 +97,11 @@ const emit = defineEmits<{
 
 const currentIndex = ref(props.initialIndex)
 
+// 分享页每次点击不同缩略图都会重新打开轮播，需要跟随外部传入的起始下标
+watch(() => props.initialIndex, (val) => {
+  if (val !== undefined) currentIndex.value = val
+})
+
 const currentImage = computed(() => props.images[currentIndex.value])
 
 const close = () => {
@@ -166,7 +171,7 @@ onUnmounted(() => {
 
 .scene-container {
   position: relative;
-  background: #fff;
+  background: var(--pim-media-bg);
   border-radius: 16px;
   padding: 20px;
   width: 90vw;
@@ -204,7 +209,7 @@ onUnmounted(() => {
 .scene-name {
   font-size: 14px;
   font-weight: 600;
-  color: rgb(30, 50, 90);
+  color: rgb(var(--pim-brand));
   margin-bottom: 12px;
   text-align: center;
   max-width: 100%;
@@ -224,7 +229,7 @@ onUnmounted(() => {
   width: 100%;
   overflow: hidden;
   border-radius: 8px;
-  background: #f5f5f5;
+  background: var(--pim-media-bg);
   touch-action: pan-y;
 }
 
@@ -246,8 +251,8 @@ onUnmounted(() => {
   height: 44px;
   border-radius: 50%;
   border: none;
-  background: rgba(255, 255, 255, 0.9);
-  color: #333;
+  background: var(--pim-media-control-bg);
+  color: var(--pim-media-control-ink);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -258,7 +263,7 @@ onUnmounted(() => {
 }
 
 .nav-btn:hover {
-  background: #fff;
+  background: var(--pim-media-control-bg-solid);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
@@ -272,7 +277,7 @@ onUnmounted(() => {
 
 .scene-counter {
   font-size: 14px;
-  color: #888;
+  color: var(--pim-text-faint);
   margin-top: 12px;
   font-weight: 500;
 }
@@ -287,13 +292,13 @@ onUnmounted(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #d0d0d0;
+  background: var(--pim-line-strong);
   cursor: pointer;
   transition: background 0.2s, transform 0.2s;
 }
 
 .dot.active {
-  background: rgb(30, 50, 90);
+  background: rgb(var(--pim-brand));
   transform: scale(1.3);
 }
 

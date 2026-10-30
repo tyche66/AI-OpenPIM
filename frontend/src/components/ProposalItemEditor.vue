@@ -1,39 +1,44 @@
 <template>
-  <div class="proposal-item-editor">
-    <el-select
-      v-model="pendingProductId"
-      placeholder="搜索商品名称 / 编号"
-      filterable
-      remote
-      :remote-show-suffix="true"
-      :loading="searchLoading"
-      :remote-method="handleRemoteSearch"
-      class="capsule-select full-width"
-      style="width: 100%"
-    >
-      <el-option
-        v-for="p in productOptions"
-        :key="p.id"
-        :label="`${p.product_name}（${p.product_no}）`"
-        :value="p.id"
+  <div
+    class="proposal-item-editor"
+    :class="{ 'proposal-item-editor--compact': compact }"
+  >
+    <div class="product-picker">
+      <el-select
+        v-model="pendingProductId"
+        placeholder="搜索商品名称 / 编号"
+        filterable
+        remote
+        :remote-show-suffix="true"
+        :loading="searchLoading"
+        :remote-method="handleRemoteSearch"
+        class="capsule-select full-width product-picker__select"
+        style="width: 100%"
       >
-        <div class="option-info">
-          <span class="option-name">{{ p.product_name }}</span>
-          <span class="option-no">{{ p.product_no }}</span>
-          <span class="option-price">¥{{ p.face_price?.toFixed(2) ?? '-' }}</span>
-          <span class="option-stock">库存状态 {{ p.stock_status || '-' }}</span>
-        </div>
-      </el-option>
-    </el-select>
+        <el-option
+          v-for="p in productOptions"
+          :key="p.id"
+          :label="`${p.product_name}（${p.product_no}）`"
+          :value="p.id"
+        >
+          <div class="option-info">
+            <span class="option-name">{{ p.product_name }}</span>
+            <span class="option-no">{{ p.product_no }}</span>
+            <span class="option-price">¥{{ p.face_price?.toFixed(2) ?? '-' }}</span>
+            <span class="option-stock">库存状态 {{ p.stock_status || '-' }}</span>
+          </div>
+        </el-option>
+      </el-select>
 
-    <el-button
-      type="primary"
-      :disabled="!pendingProductId"
-      class="capsule-btn capsule-btn-primary"
-      @click="addItem"
-    >
-      添加商品
-    </el-button>
+      <el-button
+        type="primary"
+        :disabled="!pendingProductId"
+        class="capsule-btn capsule-btn-primary"
+        @click="addItem"
+      >
+        添加商品
+      </el-button>
+    </div>
 
     <div
       v-if="items.length"
@@ -70,7 +75,7 @@
             <el-icon><Close /></el-icon>
           </el-button>
         </div>
-        <div class="item-card-body">
+        <div class="item-fields">
           <div class="item-field">
             <label>数量</label>
             <el-input-number
@@ -91,6 +96,46 @@
               clearable
               class="capsule-input"
               @update:model-value="updateRemark(idx, $event)"
+            />
+          </div>
+          <div class="item-field">
+            <label>楼层名称</label>
+            <el-input
+              :model-value="item.floor_label ?? ''"
+              placeholder="请输入楼层名称（可选）"
+              clearable
+              class="capsule-input"
+              @update:model-value="(val: string) => updateLocation(idx, 'floor_label', val)"
+            />
+          </div>
+          <div class="item-field">
+            <label>空间名称</label>
+            <el-input
+              :model-value="item.space_label ?? ''"
+              placeholder="请输入空间名称（可选）"
+              clearable
+              class="capsule-input"
+              @update:model-value="(val: string) => updateLocation(idx, 'space_label', val)"
+            />
+          </div>
+          <div
+            v-if="item.project_space_id"
+            class="item-space-id"
+            :title="`已绑定项目空间 ID：${item.project_space_id}`"
+          >
+            已绑定空间 ID：{{ item.project_space_id }}
+          </div>
+          <div class="item-field item-field--wide">
+            <label>材质说明</label>
+            <el-input
+              :model-value="item.material_desc ?? ''"
+              type="textarea"
+              :rows="2"
+              resize="none"
+              placeholder="该明细的材质说明（可选）"
+              clearable
+              class="capsule-input"
+              @update:model-value="updateMaterialDesc(idx, $event)"
             />
           </div>
         </div>
@@ -117,6 +162,8 @@ import { Close } from '@element-plus/icons-vue'
 
 interface Props {
   modelValue?: ProposalItem[]
+  /** 紧凑模式：字段排成两列网格，适合放在较窄的弹窗里 */
+  compact?: boolean
 }
 
 interface Emits {
@@ -126,6 +173,7 @@ interface Emits {
 
 const props = withDefaults(defineProps<Props>(), {
   modelValue: () => [],
+  compact: false,
 })
 
 const emit = defineEmits<Emits>()
@@ -216,6 +264,27 @@ const updateRemark = (idx: number, val: string) => {
   updateItemField(idx, 'remark', val)
 }
 
+// ---------------------------------------------------------------------------
+// Track C：自由输入空间标签与材质说明
+// ---------------------------------------------------------------------------
+
+function updateLocation(idx: number, field: 'floor_label' | 'space_label', val: string) {
+  items.value = items.value.map((item, i) => {
+    if (i !== idx) return item
+    return {
+      ...item,
+      [field]: val.trim() || undefined,
+      // Typed labels are authoritative; an old compatibility ID must not
+      // survive a manual location edit or a cleared label.
+      project_space_id: undefined,
+    }
+  })
+}
+
+function updateMaterialDesc(idx: number, val: string) {
+  updateItemField(idx, 'material_desc', val || undefined)
+}
+
 const onCoverError = (e: Event) => {
   const img = e.target as HTMLImageElement
   if (img) img.style.display = 'none'
@@ -225,18 +294,35 @@ const onCoverError = (e: Event) => {
 
 <style scoped>
 .proposal-item-editor {
-  --brand-deep: rgba(30, 50, 90, 0.92);
-  --brand-primary: rgba(30, 50, 90, 0.85);
-  --brand-light: rgba(30, 50, 90, 0.08);
-  --brand-lighter: rgba(30, 50, 90, 0.04);
-  --text-primary: #5E6470;
-  --text-secondary: rgba(30, 50, 90, 0.6);
+  --brand-deep: var(--pim-text-strong);
+  --brand-primary: var(--pim-text-strong);
+  --brand-light: rgba(var(--pim-brand), 0.08);
+  --brand-lighter: rgba(var(--pim-brand), 0.04);
+  --text-primary: var(--pim-text-primary);
+  --text-secondary: var(--pim-text-secondary);
   --radius-sm: 12px;
   --transition-fast: 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .full-width {
   width: 100%;
+}
+
+/* 商品搜索 + 添加按钮：同一行、按钮不被挤压 */
+.product-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.product-picker__select {
+  flex: 1;
+  min-width: 0;
+}
+
+.product-picker > .capsule-btn {
+  flex-shrink: 0;
+  margin-left: 0;
 }
 
 /* Option display inside select dropdown */
@@ -278,7 +364,7 @@ const onCoverError = (e: Event) => {
 .item-card {
   border-radius: var(--radius-sm) !important;
   box-shadow: none !important;
-  border: 1px solid rgba(30, 50, 90, 0.08) !important;
+  border: 1px solid rgba(var(--pim-brand), 0.08) !important;
 }
 
 .item-card :deep(.el-card__body) {
@@ -353,32 +439,81 @@ const onCoverError = (e: Event) => {
   flex-wrap: wrap;
 }
 
+/*
+ * 明细字段网格：数量/备注/楼层/空间各占一列，材质说明跨整行。
+ * 原来每个字段 min-width:140px 在 640px 弹窗里会挤成横向滚动，
+ * 备注和材质说明只剩几个字宽；网格让每一格都有稳定宽度。
+ */
+.item-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin-top: 10px;
+}
+
+.item-field--wide {
+  grid-column: 1 / -1;
+}
+
+.item-location-body {
+  align-items: flex-start;
+}
+
+.item-space-id {
+  width: 100%;
+  color: var(--text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .item-field {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1;
-  min-width: 140px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
 }
 
 .item-field label {
-  font-size: 13px;
-  color: var(--text-primary);
+  font-size: 12px;
+  color: var(--text-secondary);
   font-weight: 500;
   flex-shrink: 0;
+}
+
+/* 网格布局下输入框撑满所在列 */
+.item-fields .item-field :deep(.el-input),
+.item-fields .item-field :deep(.el-input-number),
+.item-fields .item-field :deep(.el-textarea) {
+  width: 100%;
+}
+
+/* 紧凑模式：缩小的明细卡片间距，避免弹窗里出现双层滚动条 */
+.proposal-item-editor--compact .items-list {
+  max-height: 46vh;
+  gap: 10px;
+}
+
+.proposal-item-editor--compact .item-card :deep(.el-card__body) {
+  padding: 12px 14px;
+}
+
+.proposal-item-editor--compact .item-cover {
+  width: 40px;
+  height: 40px;
 }
 
 /* Capsule styling */
 .capsule-input :deep(.el-input__wrapper) {
   border-radius: 20px;
-  box-shadow: 0 0 0 1px rgba(30, 50, 90, 0.1) inset;
+  box-shadow: 0 0 0 1px rgba(var(--pim-brand), 0.1) inset;
   padding: 4px 16px;
 }
 
 .capsule-select :deep(.el-select__wrapper),
 .capsule-select :deep(.el-input__wrapper) {
   border-radius: 20px;
-  box-shadow: 0 0 0 1px rgba(30, 50, 90, 0.1) inset;
+  box-shadow: 0 0 0 1px rgba(var(--pim-brand), 0.1) inset;
   padding: 4px 16px;
 }
 
@@ -417,8 +552,17 @@ const onCoverError = (e: Event) => {
 
 /* Mobile responsive */
 @media (max-width: 768px) {
+  .product-picker {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .item-card-body {
     flex-direction: column;
+  }
+
+  .item-fields {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .item-field {

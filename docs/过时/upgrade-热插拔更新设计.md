@@ -51,9 +51,9 @@
 
 | 数据 | 当前卷/位置 | 更新规则 |
 | --- | --- | --- |
-| PostgreSQL | `richangpim_go_postgres_pg16_data_20260716` | 只允许数据库容器复用；禁止随发布删除 |
-| Redis | `richangpim_go_redis_data_20260716` | 主要用于缓存/队列；更新前后保持卷不变 |
-| MinIO | `richangpim_go_minio_data_20260716` | 产品文件、图片等对象数据；禁止随发布删除 |
+| PostgreSQL | `openpim_go_postgres_pg16_data_20260716` | 只允许数据库容器复用；禁止随发布删除 |
+| Redis | `openpim_go_redis_data_20260716` | 主要用于缓存/队列；更新前后保持卷不变 |
+| MinIO | `openpim_go_minio_data_20260716` | 产品文件、图片等对象数据；禁止随发布删除 |
 | 备份 | 宿主机 `./backups` | PostgreSQL 和 MinIO 必须同一批次备份 |
 
 `docker compose up -d --force-recreate` 只重建容器本身时，命名卷不会被删除。但以下命令或操作具有数据破坏风险：
@@ -129,7 +129,7 @@ backend 容器启动时执行：
 推荐保留版本目录：
 
 ```text
-/srv/richangpim/releases/
+/srv/openpim/releases/
   20260803T120000Z-v1.10.0-abc1234/
     frontend/dist/
     portal/dist/
@@ -138,7 +138,7 @@ backend 容器启动时执行：
     frontend/dist/
     portal/dist/
     release.json
-/srv/richangpim/current -> releases/20260803T120000Z-v1.10.1-def5678
+/srv/openpim/current -> releases/20260803T120000Z-v1.10.1-def5678
 ```
 
 构建完成且校验通过后，先写入新目录，再以同一文件系统上的原子 `rename` 或符号链接替换更新 `current`。旧目录在观察期内保留，回滚只需要将 `current` 指回旧版本。
@@ -209,7 +209,7 @@ cat backups/last_status.json
 
 ```bash
 RELEASE_ID="$(date -u +%Y%m%dT%H%M%SZ)-<version>-<commit>"
-mkdir -p "/srv/richangpim/releases/${RELEASE_ID}"
+mkdir -p "/srv/openpim/releases/${RELEASE_ID}"
 bash scripts/build_frontends.sh
 ```
 

@@ -108,6 +108,16 @@ HEADER_ALIASES: dict[str, tuple[str, ...]] = {
     "material": ("材质", "material", "材料", "面料"),
     "specification": ("规格", "specification", "spec", "规格尺寸", "尺寸", "size"),
     "colors": ("颜色", "colors", "color", "可选颜色", "颜色选项"),
+    "delivery_period": (
+        "交货期",
+        "delivery_period",
+        "deliveryperiod",
+        "交期",
+        "货期",
+        "lead_time",
+        "leadtime",
+        "生产周期",
+    ),
     "description": ("描述", "description", "产品描述", "说明", "备注", "remark", "desc"),
     "data_source": ("数据来源", "data_source", "datasource", "来源", "source"),
     "stock_status": ("库存状态", "stock_status", "stockstatus", "库存", "现货状态", "stock"),
@@ -382,6 +392,76 @@ def normalize_enum(text: object, aliases: dict[str, str], default: str) -> tuple
 # 不用空格分隔：文件名和 URL 里出现空格太常见，按空格切会把一个值切碎。
 _MULTI_SEP = re.compile(r"[,，;；|\r\n\t]+")
 
+# 标签类型别名。导入时可以用「类型:名称」或「名称(类型)」显式指定，
+# 不写就走导入参数里的默认类型（默认 series）。
+# 值留空表示「明确不分组」——必须和「这个词不是类型」区分开，所以先判断
+# _looks_like_tag_type 再取值。
+TAG_TYPE_ALIASES: dict[str, str] = {
+    "系列": "series",
+    "系列名": "series",
+    "series": "series",
+    "风格": "style",
+    "style": "style",
+    "材质": "material",
+    "material": "material",
+    "颜色": "color",
+    "色系": "color",
+    "color": "color",
+    "标签": "",
+    "普通": "",
+    "未分组": "",
+    "none": "",
+}
+
+_TAG_TYPE_PREFIX = re.compile(r"^\s*([^\s:：=()（）]{1,16})\s*[:：=]\s*(.+)$")
+_TAG_TYPE_SUFFIX = re.compile(r"^\s*(.+?)\s*[（(]\s*([^()（）]{1,16})\s*[)）]\s*$")
+
+
+def _looks_like_tag_type(word: str) -> bool:
+    key = (word or "").strip().lower()
+    if not key:
+        return False
+    if key in TAG_TYPE_ALIASES:
+        return True
+    # ASCII 词允许任意自定义类型（series / style / brand …），中文必须走别名表，
+    # 避免把「型号:ABC」这种正常标签名拆成 类型+名称。
+    return bool(re.fullmatch(r"[a-z][a-z0-9_-]{0,15}", key))
+
+
+def _normalize_tag_type(word: str) -> str | None:
+    key = (word or "").strip().lower()
+    if not key:
+        return None
+    if key in TAG_TYPE_ALIASES:
+        return TAG_TYPE_ALIASES[key] or None
+    return key if re.fullmatch(r"[a-z][a-z0-9_-]{0,15}", key) else None
+
+
+def parse_tag_specs(tokens: list[str]) -> list[tuple[str, str | None]]:
+    """把标签单元格拆成 (名称, 类型) 列表。
+
+    ``系列:摩耳`` / ``系列=摩耳`` / ``摩耳(系列)`` / ``series:Moer`` 都会得到
+    ``("摩耳", "series")``；不带类型的写法类型为 ``None``，由导入参数决定。
+    """
+    specs: list[tuple[str, str | None]] = []
+    seen: set[tuple[str, str | None]] = set()
+    for token in tokens:
+        name, hint = token, None
+        match = _TAG_TYPE_PREFIX.match(token)
+        if match and _looks_like_tag_type(match.group(1)):
+            name, hint = match.group(2).strip(), _normalize_tag_type(match.group(1))
+        else:
+            match = _TAG_TYPE_SUFFIX.match(token)
+            if match and _looks_like_tag_type(match.group(2)):
+                name, hint = match.group(1).strip(), _normalize_tag_type(match.group(2))
+        if not name:
+            continue
+        spec = (name, hint)
+        if spec not in seen:
+            seen.add(spec)
+            specs.append(spec)
+    return specs
+
 
 def split_multi(text: object) -> list[str]:
     """把「a, b; c」拆成 [a, b, c]，顺序保留、去重、丢空值。"""
@@ -552,14 +632,21 @@ class RowFields:
     material: str | None = None
     specification: str | None = None
     colors: str | None = None
+    delivery_period: str | None = None
     description: str | None = None
     data_source: str | None = None
     stock_status: str = "in_stock"
     status: str = "draft"
     completeness_status: str = "complete"
     tag_names: list[str] = field(default_factory=list)
+    # 与 tag_names 一一对应的「名称 + 类型」；类型为 None 表示没在单元格里指定，
+    # 由导入参数 new_tag_type 决定（默认 series）。未知标签会按它自动创建。
+    tag_specs: list[tuple[str, str | None]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    # 这一行「真的填了」的字段名。覆盖 / 追加模式靠它区分「单元格空着」与
+    # 「解析出的默认值」——空着必须保留库里原值，而不是把 status 打回 draft。
+    provided: set[str] = field(default_factory=set)
 
     @property
     def ok(self) -> bool:
@@ -573,6 +660,7 @@ _TEXT_LIMITS: dict[str, int] = {
     "product_name": 255,
     "material": 128,
     "specification": 255,
+    "delivery_period": 64,
     "data_source": 512,
 }
 
@@ -589,8 +677,12 @@ def parse_row(row: ProductRow) -> RowFields:
     out.product_name = row.get("product_name")
     if not out.product_no:
         out.errors.append("产品编号为空")
+    else:
+        out.provided.add("product_no")
     if not out.product_name:
         out.errors.append("产品名称为空")
+    else:
+        out.provided.add("product_name")
     out.brand_name = row.get("brand_name")
     out.supplier_name = row.get("supplier_name")
     out.category_name = row.get("category_name")
@@ -604,6 +696,7 @@ def parse_row(row: ProductRow) -> RowFields:
         out.notes.append("面价为空，已按待核价（99999）导入并标记为待补充")
     else:
         out.face_price = price.value
+        out.provided.add("face_price")
         if price.placeholder:
             out.completeness_status = "pending"
 
@@ -612,23 +705,30 @@ def parse_row(row: ProductRow) -> RowFields:
         out.notes.append(cost.error + "，已留空")
     elif not cost.placeholder:
         out.cost_price = cost.value
+        if cost.value is not None:
+            out.provided.add("cost_price")
 
-    for key in ("material", "specification", "colors", "description", "data_source"):
+    for key in ("material", "specification", "colors", "delivery_period", "description", "data_source"):
         text = row.get(key)
         limit = _TEXT_LIMITS.get(key)
         if limit and len(text) > limit:
             out.notes.append(f"{key} 超过 {limit} 字已截断")
             text = text[:limit]
         setattr(out, key, text or None)
+        if text:
+            out.provided.add(key)
 
     for key, aliases, default in (
         ("stock_status", STOCK_STATUS_ALIASES, "in_stock"),
         ("status", STATUS_ALIASES, "draft"),
     ):
-        value, note = normalize_enum(row.get(key), aliases, default)
+        raw = (row.get(key) or "").strip()
+        value, note = normalize_enum(raw, aliases, default)
         setattr(out, key, value)
         if note:
             out.notes.append(f"{key}: {note}")
+        elif raw:
+            out.provided.add(key)
 
     if row.get("completeness_status") and out.completeness_status != "pending":
         value, note = normalize_enum(
@@ -637,8 +737,16 @@ def parse_row(row: ProductRow) -> RowFields:
         out.completeness_status = value
         if note:
             out.notes.append(f"completeness_status: {note}")
+        else:
+            out.provided.add("completeness_status")
 
     out.tag_names = split_multi(row.get("tag_names"))
+    out.tag_specs = parse_tag_specs(out.tag_names)
+    # tag_names 只保留拆掉类型前缀后的纯名称，和 tag_specs 保持一致；
+    # 真正写库用的是 tag_specs（带类型）。
+    out.tag_names = [name for name, _hint in out.tag_specs]
+    if out.tag_specs:
+        out.provided.add("tag_names")
     for key in ("product_no", "product_name"):
         limit = _TEXT_LIMITS[key]
         value = getattr(out, key)
@@ -651,7 +759,7 @@ def parse_row(row: ProductRow) -> RowFields:
 # 模板列顺序照着导出走（products_export.HEADER_MAP），最后补三列图片。
 # 这样「导出 → 改 → 导回」和「下载模板 → 填 → 导入」是同一套列名，用户只需要记一套。
 TEMPLATE_COLUMNS: tuple[tuple[str, str], ...] = (
-    ("产品编号*", "SUNON-001"),
+    ("产品编号*", "PILOT-001"),
     ("产品名称*", "人体工学办公椅"),
     ("面价*", "1280"),
     ("品牌", "示例品牌"),
@@ -661,6 +769,7 @@ TEMPLATE_COLUMNS: tuple[tuple[str, str], ...] = (
     ("材质", "网布+铝合金"),
     ("规格", "W650×D620×H1150mm"),
     ("颜色", "黑色,灰色"),
+    ("交货期", "现货"),
     ("描述", "示例描述，可留空"),
     ("数据来源", "2026 供应商报价表"),
     ("库存状态", "有货"),
@@ -686,6 +795,15 @@ TEMPLATE_NOTES: tuple[str, ...] = (
         "填「待核价/面议/待定」或留空会按占位价 99999 导入，并把完整度标成「待补充」。"
     ),
     (
+        "【标签】标签列会自动创建系统里没有的标签，默认归入「系列」；"
+        "想指定类型就写「系列:摩耳」「风格:新中式」，写「标签:热销」表示不分组。"
+        "已有同名标签会直接复用，不会重复创建。"
+    ),
+    (
+        "【交货期】自由文本即可（现货 / 7 天 / 30 天 / 需确认），"
+        "会作为徽章显示在产品列表与详情页，并参与 AI 选品的交期匹配。"
+    ),
+    (
         "【图片·方式一（推荐）】直接把图片贴进「主图/产品图/场景图」那一格："
         "WPS 的「嵌入单元格」、Excel 365 的「置于单元格内」、"
         "以及压在该行上的浮动图片都能识别。"
@@ -693,7 +811,7 @@ TEMPLATE_NOTES: tuple[str, ...] = (
     (
         "【图片·方式二】把 xlsx 和图片文件一起打成 .zip 上传，"
         "格中填图片文件名（chair-1.jpg）。也支持不写文件名 —— "
-        "文件名以产品编号开头的图片（SUNON-001.jpg / SUNON-001_2.jpg）会自动归到该产品，"
+        "文件名以产品编号开头的图片（PILOT-001.jpg / PILOT-001_2.jpg）会自动归到该产品，"
         "名字里带「场景/scene」的进场景图。"
     ),
     "【图片·方式三】格里填 http(s) 图片直链（需要管理员开启外链抓取）。",

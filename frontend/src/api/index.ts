@@ -8,6 +8,7 @@ import type {
   ApiEnvelope,
   Paginated,
   ProductListItem,
+  ProjectSpace,
   Proposal,
   ProposalCreateRequest,
   ProposalUpdateRequest,
@@ -188,7 +189,13 @@ api.interceptors.response.use(
     } else if (!error.response) {
       console.error('[API Network Error]', error.message)
       if (!originalRequest.suppressErrorMessage) {
-        ElMessage.error('网络连接失败，请检查后端服务是否正常运行 (http://localhost:8000)')
+        // 超时和真正连不上要分开说：内容生成/导入这类慢接口超时时后端往往还在干活，
+        // 报「后端服务未运行」会把用户引到错误的排查方向。
+        if (error.code === 'ECONNABORTED' || /timeout/i.test(error.message || '')) {
+          ElMessage.error('请求超时：服务端仍在处理或耗时过长，请稍后到列表确认结果')
+        } else {
+          ElMessage.error('网络连接失败，请检查后端服务是否正常运行')
+        }
       }
     }
 
@@ -217,9 +224,130 @@ export interface ProductListParams {
   size?: number
 }
 
+/** 三级筛选导航的维度：与后端 /products/filter-options 的 dimension 一一对应。 */
+export type ProductFilterDimension =
+  | 'series'
+  | 'brand'
+  | 'supplier'
+  | 'status'
+  | 'stock'
+  | 'category'
+
+export interface ProductFilterOption {
+  value: string
+  label: string
+  count: number
+}
+
+export interface ProductFilterOptionsData {
+  dimension: ProductFilterDimension
+  items: ProductFilterOption[]
+}
+
+/** 重传产品包时可选的重复处理方式。 */
+export type ImportMode = 'overwrite' | 'append' | 'skip'
+
+/** 产品编号别名冲突（103800022 ↔ P-103800022）的处理方式。 */
+export type ImportAliasAction = 'overwrite_alias' | 'create_new'
+
+export interface ImportConflictRow {
+  row: number
+  product_no: string
+  product_name: string
+  existing_name: string
+  existing_image_count: number
+}
+
+export interface ImportAliasConflictRow {
+  row: number
+  product_no: string
+  product_name: string
+  alias_product_id: string | null
+  alias_product_no: string
+  existing_name: string | null
+  existing_image_count: number
+  /** safe = 名称一致、候选唯一，可按别名覆盖；high = 绝不自动覆盖 */
+  risk: 'safe' | 'high'
+  reason: string
+}
+
+export interface ImportInvalidRow {
+  row: number
+  product_no: string
+  reason: string
+}
+
+export interface ImportPreflightPayload {
+  token: string
+  expires_at: string
+  file_name: string
+  size: number
+  sha256: string
+  header_row: number
+  total_rows: number
+  new_count: number
+  /** 精确编号命中的已存在产品数（= existing_count，保留旧字段兼容） */
+  existing_count: number
+  exact_existing_count: number
+  /** 只差前导 P-、未精确命中的行数 */
+  alias_conflict_count: number
+  /** 名称一致、候选唯一，可按别名覆盖的行数 */
+  alias_safe_count: number
+  /** 名称不同 / 候选不唯一 / 产品已删除：绝不自动覆盖 */
+  alias_high_risk_count: number
+  invalid_count: number
+  /** 会被新建的标签（表格里还没有的），用于在弹窗里先告知用户 */
+  new_tags: Array<{ name: string; tag_type: string | null }>
+  new_tag_count: number
+  new_tag_type_default: string
+  conflicts: ImportConflictRow[]
+  conflicts_truncated: boolean
+  alias_conflicts: ImportAliasConflictRow[]
+  alias_conflicts_truncated: boolean
+  invalid: ImportInvalidRow[]
+  invalid_truncated: boolean
+  notes: string[]
+  image_warnings: string[]
+  unknown_headers: string[]
+}
+
+export interface ImportCommitPayload {
+  total: number
+  success_count: number
+  fail_count: number
+  failures: Array<{ row: number; product_no: string; reason: string }>
+  created_count: number
+  updated_count: number
+  appended_count: number
+  skipped_count: number
+  alias_updated_count: number
+  alias_created_count: number
+  images_replaced: number
+  images_appended: number
+  created_tags: number
+  new_tag_names: string[]
+  mode: ImportMode | 'create'
+  backup_id: string | null
+  notes: string[]
+  image_count: number
+  scene_image_count: number
+  uploaded_count: number
+  image_sources: string[]
+  image_warnings: string[]
+  header_row: number
+  unknown_headers: string[]
+  blank_rows: number
+}
+
 export const productApi = {
   list: (params?: ProductListParams) =>
     api.get('/products', { params }) as Promise<ApiEnvelope<Paginated<ProductListItem>>>,
+  /*
+   * 三级筛选导航的选项：不带 parent_id 返回二级，带 parent_id 返回该二级下的三级。
+   * 选项与计数全部由后端按产品数据实时聚合，前端不缓存、也不写死任何分类名。
+   */
+  filterOptions: (params: { dimension: ProductFilterDimension; parent_id?: string }) =>
+    api.get('/products/filter-options', { params }) as Promise<ApiEnvelope<ProductFilterOptionsData>>,
   get: (id: string) => api.get(`/products/${id}`, { suppressErrorMessage: true }),
   create: (data: unknown) => api.post('/products', data),
   update: (id: string, data: unknown) => api.put(`/products/${id}`, data),
@@ -254,6 +382,38 @@ export const productApi = {
             if (event.total) onProgress(Math.round((event.loaded * 100) / event.total))
           }
         : undefined,
+    }),
+  /*
+   * 重传产品包的两段式入口：
+   *   preflight 只上传 + 解析 + 查重，零写库，返回 token 与冲突清单；
+   *   commit    带着 token 和用户选的模式（overwrite / append / skip）真正写库。
+   * 两段都用 905s 超时，理由同上：大包在服务端解图/传 MinIO 的时间远超默认 30s。
+   */
+  importPreflight: (data: unknown, onProgress?: (percent: number) => void) =>
+    api.post('/products/import/preflight', data, {
+      timeout: 905000,
+      suppressErrorMessage: true,
+      onUploadProgress: onProgress
+        ? (event: AxiosProgressEvent) => {
+            if (event.total) onProgress(Math.round((event.loaded * 100) / event.total))
+          }
+        : undefined,
+    }) as Promise<{ code: number; data: ImportPreflightPayload }>,
+  importCommit: (payload: {
+    token: string
+    mode: ImportMode
+    backup?: boolean
+    new_tag_type?: string
+    alias_action?: ImportAliasAction
+    alias_decisions?: Array<{ row: number; action: ImportAliasAction }>
+  }) =>
+    api.post('/products/import/commit', payload, {
+      timeout: 905000,
+      suppressErrorMessage: true,
+    }) as Promise<{ code: number; data: ImportCommitPayload }>,
+  cancelImportPreflight: (token: string) =>
+    api.delete(`/products/import/preflight/${encodeURIComponent(token)}`, {
+      suppressErrorMessage: true,
     }),
   bindProductImages: (id: string, data: { attachment_ids: string[] }) =>
     api.post(`/products/${id}/images`, data),
@@ -342,14 +502,42 @@ export interface QuotationListParams {
   size?: number
 }
 
+// ---------------------------------------------------------------------------
+// Track C: 项目空间（楼层/房间/区域）
+// ---------------------------------------------------------------------------
+
+export const projectSpaceApi = {
+  list: (projectId: string) =>
+    api.get(`/projects/${projectId}/spaces`) as Promise<ApiEnvelope<ProjectSpace[]>>,
+
+  create: (projectId: string, data: {
+    space_name: string
+    space_type?: string
+    parent_id?: string | null
+    sort?: number
+  }) => api.post(`/projects/${projectId}/spaces`, data) as Promise<ApiEnvelope<ProjectSpace>>,
+
+  update: (projectId: string, spaceId: string, data: {
+    space_name?: string
+    space_type?: string
+    parent_id?: string | null
+    sort?: number
+  }) => api.put(`/projects/${projectId}/spaces/${spaceId}`, data) as Promise<ApiEnvelope<ProjectSpace>>,
+
+  delete: (projectId: string, spaceId: string) =>
+    api.delete(`/projects/${projectId}/spaces/${spaceId}`) as Promise<
+      ApiEnvelope<{ id: string; deleted: number }>
+    >,
+}
+
 export const proposalApi = {
   list: (params?: ProposalListParams) =>
     api.get('/proposals', { params }) as Promise<ApiEnvelope<Paginated<Proposal>>>,
   get: (id: string) => normalizeProposalEnvelope(
     api.get(`/proposals/${id}`) as Promise<ApiEnvelope<Proposal>>,
   ),
-  create: (data: ProposalCreateRequest) => normalizeProposalEnvelope(
-    api.post('/proposals', data) as Promise<ApiEnvelope<Proposal>>,
+  create: (data: ProposalCreateRequest, options?: { suppressErrorMessage?: boolean }) => normalizeProposalEnvelope(
+    api.post('/proposals', data, options) as Promise<ApiEnvelope<Proposal>>,
   ),
   update: (id: string, data: ProposalUpdateRequest) => normalizeProposalEnvelope(
     api.put(`/proposals/${id}`, data) as Promise<ApiEnvelope<Proposal>>,
@@ -384,9 +572,17 @@ export const shareApi = {
 export const userApi = {
   list: (params?: Record<string, unknown>) => api.get('/users', { params }),
   get: (id: string) => api.get(`/users/${id}`),
-  create: (data: unknown) => api.post('/users', data),
-  update: (id: string, data: unknown) => api.put(`/users/${id}`, data),
-  delete: (id: string) => api.delete(`/users/${id}`),
+  create: (data: unknown, config?: { suppressErrorMessage?: boolean }) =>
+    api.post('/users', data, config),
+  update: (id: string, data: unknown, config?: { suppressErrorMessage?: boolean }) =>
+    api.put(`/users/${id}`, data, config),
+  delete: (id: string, config?: { suppressErrorMessage?: boolean }) =>
+    api.delete(`/users/${id}`, config),
+  resetPassword: (
+    id: string,
+    data: { new_password: string },
+    config?: { suppressErrorMessage?: boolean }
+  ) => api.post(`/users/${id}/reset-password`, data, config),
 }
 
 export const roleApi = {

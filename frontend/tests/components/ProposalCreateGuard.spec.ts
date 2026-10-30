@@ -6,9 +6,21 @@ import { createPinia, setActivePinia } from 'pinia'
 
 vi.mock('@/api', () => ({
   proposalApi: { list: vi.fn().mockResolvedValue({ data: { list: [] } }), create: vi.fn() },
+  projectSpaceApi: { list: vi.fn().mockResolvedValue({ data: [] }) },
   shareApi: { create: vi.fn() },
   productApi: { get: vi.fn(), list: vi.fn() },
 }))
+vi.mock('@/api/proposalFloorPlans', () => ({
+  proposalFloorPlanApi: {
+    list: vi.fn().mockResolvedValue({ code: 200, data: { list: [], total: 0, limit: 20 } }),
+    create: vi.fn(),
+    batchCreate: vi.fn(),
+    update: vi.fn(),
+    remove: vi.fn(),
+  },
+}))
+vi.mock('@/api/customer', () => ({ customerApi: { list: vi.fn() } }))
+vi.mock('@/api/project', () => ({ projectApi: { list: vi.fn().mockResolvedValue({ data: { list: [] } }) } }))
 
 import { proposalApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'

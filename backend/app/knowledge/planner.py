@@ -5,14 +5,25 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.knowledge.attributes import (
+    EMPTY_DICTIONARY,
+    AttributeDictionary,
+    build_product_query,
+    normalize_text,
+)
 from app.knowledge.entities import QueryEntities
+from app.knowledge.facets import ProductFacets
 from app.knowledge.intent import KnowledgeIntent
 from app.knowledge.schemas import KnowledgeQueryRequest
 
 UUID_RE = re.compile(
     r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
 )
-PRODUCT_NO_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9./_-]{2,63}\b")
+# 型号：允许 P-104300001 / EN74-2.320162 / PIM70.095095 等。
+# 结尾用"非型号字符"前瞻而不是 \b：中文与数字之间不构成 \b 边界。
+PRODUCT_NO_RE = re.compile(
+    r"\b[A-Za-z][A-Za-z0-9]*(?:[-._/][A-Za-z0-9]+)*(?![A-Za-z0-9._/-])"
+)
 PRICE_RE = re.compile(
     r"(?:(\d+(?:\.\d+)?)\s*(?:元|块|rmb|RMB)|(?:预算|价格|面价)\s*(?:为|是|不超过|低于|以内)?\s*(\d+(?:\.\d+)?))",
     re.IGNORECASE,
@@ -47,7 +58,7 @@ QUALITY_TERMS = {
     "待完善": "pending",
 }
 BUSINESS_TERMS = (
-    "铭达",
+    "pilot",
     "pilot",
     "办公桌",
     "班台",
@@ -55,19 +66,6 @@ BUSINESS_TERMS = (
     "会议桌",
     "办公椅",
     "背柜",
-)
-KEYWORD_STOP_TERMS = (
-    "找出",
-    "找一下",
-    "帮我找",
-    "推荐",
-    "最便宜",
-    "便宜",
-    "最低价",
-    "价格最低",
-    "最长",
-    "最短",
-    "的",
 )
 
 
@@ -89,6 +87,22 @@ class Planner(Protocol):
 
 
 class RuleBasedPlanner:
+    """规则规划器。
+
+    词典由调用方注入（``set_dictionary``）；缺词典时不会回退到硬编码词表，
+    也不会把整句中文拼成一个必然无法命中的关键词。
+    """
+
+    def __init__(self, dictionary: AttributeDictionary | None = None) -> None:
+        self._dictionary = dictionary or EMPTY_DICTIONARY
+
+    def set_dictionary(self, dictionary: AttributeDictionary) -> None:
+        self._dictionary = dictionary
+
+    @property
+    def dictionary(self) -> AttributeDictionary:
+        return self._dictionary
+
     def plan(self, request: KnowledgeQueryRequest) -> QueryPlan:
         msg = request.message.strip()
         lower = msg.lower()
@@ -96,32 +110,35 @@ class RuleBasedPlanner:
             return QueryPlan(intent=KnowledgeIntent.UNSUPPORTED, answer_mode="refusal")
 
         entities = QueryEntities()
-        entities.product_ids = [str(x) for x in request.scope.product_ids] + UUID_RE.findall(msg)
-        entities.product_nos = _extract_product_nos(msg)
+        entities.product_ids = [str(x) for x in request.scope.product_ids] + UUID_RE.findall(
+            msg
+        )
+        entities.product_nos = _extract_product_nos(
+            msg, _alias_words(self._dictionary)
+        )
         entities.status_terms = [code for term, code in QUALITY_TERMS.items() if term in msg]
-        entities.keywords = _keywords(msg, entities.product_nos)
-        prices = [
-            float(value)
-            for match in PRICE_RE.findall(msg)
-            for value in match
-            if value and float(value) != 99999
-        ]
-        if prices:
-            entities.price_max = max(prices)
-            price_tokens = {
-                str(int(price)) if price.is_integer() else str(price) for price in prices
-            }
-            entities.keywords = [
-                keyword for keyword in entities.keywords if keyword not in price_tokens
-            ]
-        if any(x in msg for x in ("最便宜", "最低价", "价格最低")):
-            entities.price_sort = "asc"
-        if any(x in msg for x in ("最贵", "最高价", "价格最高")):
-            entities.price_sort = "desc"
-        if any(x in msg for x in ("最长", "最大尺寸", "尺寸最大")):
-            entities.specification_sort = "desc"
-        if any(x in msg for x in ("最短", "最小尺寸", "尺寸最小")):
-            entities.specification_sort = "asc"
+
+        query = build_product_query(
+            msg,
+            self._dictionary,
+            product_nos=entities.product_nos,
+            product_ids=entities.product_ids,
+        )
+        entities.query = query
+        entities.facets = ProductFacets.from_query(query)
+        entities.keywords = list(query.soft_terms)
+
+        # 数值条件同时回写到兼容字段（旧调用点与既有测试仍可用）
+        for numeric in query.numeric_filters:
+            if numeric.attribute_code == "face_price":
+                if numeric.min_value is not None:
+                    entities.price_min = numeric.min_value
+                if numeric.max_value is not None:
+                    entities.price_max = numeric.max_value
+        entities.price_sort = query.sort_order if query.sort == "face_price" else None
+        entities.specification_sort = (
+            query.sort_order if query.sort == "specification_length_mm" else None
+        )
 
         if any(x in msg for x in ("采购", "供应商", "交期", "供货", "供应")) and any(
             x in msg for x in ("比较", "对比", "哪个", "选择")
@@ -142,6 +159,18 @@ class RuleBasedPlanner:
                     else "product.search"
                 ],
                 answer_mode="action_proposal_draft",
+            )
+        if query.has_constraints():
+            return QueryPlan(
+                intent=KnowledgeIntent.PRODUCT_SEARCH,
+                entities=entities,
+                required_tools=["product.search"],
+                # 有显式硬条件时只信结构化精确过滤；语义召回只作为软补充。
+                retrieval={
+                    "enabled": not bool(query.hard_facets),
+                    "topics": entities.keywords[:5],
+                },
+                answer_mode="search",
             )
         if any(x in msg for x in ("比较", "哪个更适合", "区别", "差别")):
             return QueryPlan(
@@ -176,11 +205,14 @@ class RuleBasedPlanner:
                 retrieval={"enabled": True, "topics": entities.keywords[:5]},
                 answer_mode="detail",
             )
-        if any(x in msg for x in ("怎么", "如何", "说明书", "安装", "维护", "资料")):
+        knowledge_terms = (
+            "怎么", "如何", "怎样", "说明书", "安装", "维护", "资料", "配置", "空间利用率"
+        )
+        if any(term in msg for term in knowledge_terms):
             return QueryPlan(
                 intent=KnowledgeIntent.KNOWLEDGE_QUESTION,
                 entities=entities,
-                required_tools=["product.search"] if entities.keywords else [],
+                required_tools=[],
                 retrieval={"enabled": True, "topics": entities.keywords[:5]},
                 answer_mode="knowledge",
             )
@@ -197,46 +229,42 @@ class RuleBasedPlanner:
         )
 
 
-def _extract_product_nos(message: str) -> list[str]:
+def _extract_product_nos(message: str, alias_words: set[str] | None = None) -> list[str]:
     candidates = PRODUCT_NO_RE.findall(message)
     blocked = {"RMB", "SQL", "http", "https"}
     out: list[str] = []
     for item in candidates:
-        if item in blocked or item.isdigit():
+        if item in blocked or item.isdigit() or len(item) < 3:
+            continue
+        if not looks_like_model_number(item):
+            continue
+        # 与受治理词典别名撞车的词（modern/LIDO/千岛…）是属性词，不是型号：
+        # 当成 product_no 会用 IN 过滤把属性命中结果全部清空（2026-10-28
+        # 实测：查询「modern」被解析成 product_no=modern，style=modern 的
+        # 175 款产品全被过滤成 0）。
+        if alias_words and normalize_text(item) in alias_words:
             continue
         if item not in out:
             out.append(item)
     return out[:20]
 
 
-def _keywords(message: str, product_nos: list[str]) -> list[str]:
-    text = message
-    for no in product_nos:
-        text = text.replace(no, " ")
-    for term in KEYWORD_STOP_TERMS:
-        text = text.replace(term, " ")
-    # Chinese natural-language questions are not safe database search terms.
-    # Only retain explicit tokens and recognized product taxonomy terms here;
-    # the complete question is sent to semantic retrieval separately.
-    words = [w.strip(" ，。！？,.;：:") for w in re.split(r"\s+", text) if len(w.strip()) >= 2]
-    out = [
-        w
-        for w in words
-        if w not in {"比较", "哪个", "产品", "适合", "帮我", "一下"}
-        and not re.search(r"[\u4e00-\u9fff]", w)
-    ]
-    # Also extract alphanumeric tokens from mixed Chinese/English text (e.g., "MT标签" -> "MT")
-    mixed_tokens = re.findall(r"[A-Za-z0-9]{2,}", text)
-    for token in mixed_tokens:
-        if token not in out and token not in {"的", "产品", "有", "哪些"}:
-            out.append(token)
-    for term in BUSINESS_TERMS:
-        if term in text and term not in out:
-            out.append(term)
-    compact = re.sub(r"[\s，。！？,.;：:]", "", text)
-    if not out and re.fullmatch(r"[\u4e00-\u9fff]{2,12}", compact):
-        out.append(compact)
-    return out[:10]
+def looks_like_model_number(token: str) -> bool:
+    """形态判断：真实产品型号必含数字或 ``-._/`` 分隔符。
+
+    本库 4024 个在售型号全部含数字（无数字的 0 条，已核对）。纯字母词
+    （modern、LIDO、OLED…）按普通词/属性词处理，不当型号；否则
+    「modern」这类纯英文查询会被 ``product_no IN ('modern')`` 过滤成空。
+    将来若出现无数字型号，需要连同这条判据一起重新评估。
+    """
+    if len(token) < 3:
+        return False
+    return any(ch.isdigit() for ch in token) or any(sep in token for sep in "-._/")
+
+
+def _alias_words(dictionary: AttributeDictionary) -> set[str]:
+    """词典全部别名的归一化集合，用于把属性词从型号候选里摘出来。"""
+    return {entry.normalized for entry in dictionary.aliases if entry.normalized}
 
 
 def get_planner() -> Planner:

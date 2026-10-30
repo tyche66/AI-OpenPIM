@@ -1385,7 +1385,7 @@ onMounted(fetchData)
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
-  background: #fff;
+  background: var(--pim-surface);
   padding: 12px 16px;
   border-radius: 8px;
   border: 1px solid var(--el-border-color-light);
@@ -1423,7 +1423,7 @@ onMounted(fetchData)
 }
 
 .gallery-card {
-  background: #fff;
+  background: var(--pim-surface);
   border: 2px solid var(--el-border-color-light);
   border-radius: 12px;
   overflow: hidden;
@@ -1525,7 +1525,7 @@ onMounted(fetchData)
 
 /* List View */
 .si-list {
-  background: #fff;
+  background: var(--pim-surface);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -1581,8 +1581,8 @@ onMounted(fetchData)
   bottom: 8px;
   padding: 4px 8px;
   border-radius: 999px;
-  background: rgba(30, 50, 90, 0.72);
-  color: #fff;
+  background: var(--pim-accent-solid);
+  color: var(--pim-on-accent);
   font-size: 12px;
   text-align: center;
 }

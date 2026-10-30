@@ -26,6 +26,257 @@
 
 **不要去改的历史记录**（改了就是篡改发布史）：`BUILD_LOG.md` 的构建记录、`PROJECT_MANAGEMENT.md` 的发布台账、`TODO.md` 的「已发布」条目、`docs/08-开发路线图.md` 的里程碑行。`RELEASE_GATE.md` 已改成版本无关，不需要跟着版本走。
 
+## v1.9.8 — 2026-10-30
+
+本版把产品列表的分类筛选重做成**三级筛选导航**，补齐**产品交货期**字段，并让产品 / 说明书
+变更**自动触发知识卡片重建**（含产品图视觉标注）；门户比较表补上主图与 MD / PDF 导出。
+
+### 产品列表三级筛选导航
+- 新增 `GET /api/v1/products/filter-options`：`series / brand / supplier / status / stock / category` 六个维度的二级、三级选项与计数全部由产品表实时聚合，没有产品的选项不会出现，重复值由 `GROUP BY` 去重。
+- 「系列」三级只取 `tag_type='series'` 的标签，「品类」三级取规格第一段（`1200*600*750` → `1200`，兼容 `W2000*1000*750`）；两个维度的三级数据源相互独立，同名二级分类不会串数据。
+- 产品列表与导出新增 `tag_type`、`spec_length_mm` 过滤参数；分类筛选改为包含全部后代分类，与菜单计数口径一致（系列维度用 `tag_type=series` 对齐「有系列标签」的计数）。
+- 后台产品页：一级滑动标签（系列 / 品牌 / 供应商 / 状态 / 库存 / 品类）+ 二级分类 + 三级标签，胶囊行固定行高、超量滚动，深色模式沿用设计令牌；原品牌 / 供应商 / 系列 / 状态 / 库存表单项与「高级筛选」移除，关键词、价格区间、查询/重置与其余工具栏保留。
+
+### 产品交货期
+- `product.delivery_period`（迁移 0036）+ API schema + 导入表头别名（交货期 / 交期 / 货期 / lead_time）+ 导入模板列 + 导出列，打通「导出 → 改 → 导回」。
+- 产品列表表格 / 卡片、详情页、编辑表单均展示；知识卡片 facts 同步收录，参与检索。
+
+### 知识索引自动重建与视觉标注
+- 产品新增 / 修改 / 删除 / 克隆、图片增删与封面变更、批量导入、说明书创建 / 解析 / OCR / 删除全部接入 `KnowledgeJobDispatcher`，自动登记 upsert / delete 任务。
+- 产品卡片新增「类目路径」「交货期」「外观标签」；新增 `product_image.vision_tags` 与 `ai_provider_config.vision_model`（迁移 0036）。
+- 新增 `app/knowledge/vision/tagger.py`：按需调用多模态模型给产品图打 3–8 个外观标签（每产品最多 3 张），未配置视觉模型时静默跳过；适配器新增 `vision_chat`，AI 配置中心可填视觉模型。
+- 迁移 `0035_knowledge_chunk_partial_unique`：`knowledge_chunk` 唯一索引改为只约束未删除行，避免内容重建与软删除历史行冲突。
+
+### 产品详情与门户
+- 产品详情页顶部新增大图 hero 与缩略图灯箱，点击查看全部产品图。
+- 门户比较表新增主图列（点击灯箱放大）、MD 导出与 PDF 导出（`POST /api/v1/products/compare-pdf`，复用 Gotenberg，只接受产品 ID 并回库取数）。
+
+### 其他
+- `.gitignore` 增加 `回收站/` 与 `.qoder/settings.local.json`；回收站内历史文件清理。
+- `.env.example` 增加 `AI_VISION_MODEL`；新增知识索引常驻脚本 `backend/app/scripts/knowledge_indexer.py`。
+
+## v1.9.7 — 2026-10-29
+
+两件事：**方案平面图**（分享页「方案信息」右侧展示、可全屏缩放）与**产品包重传**
+（先预检、再选覆盖 / 追加 / 跳过）。
+
+### 方案平面图（Track D）
+- 新增 `proposal_floor_plan` 表（迁移 `0032_proposal_floor_plans`）：图片本体仍在媒体库（MinIO + `attachment`），本表只存「方案 / 项目归属 + 展示名 + 排序」，删除绑定不删媒体文件。
+- 新增 `GET|POST /api/v1/proposals/{id}/floor-plans`、`POST .../batch`、`PUT|DELETE .../{floor_plan_id}`，权限沿用 `proposal:view` / `proposal:edit`，方案确认后仍可维护（平面图是展示物料，不是价格事实）。
+- 方案详情接口随响应返回 `floor_plans`（带 15 分钟短 token 地址）；公开分享接口在 `content.floor_plans` 透出，匿名访客仍不接触 MinIO 地址。
+- 媒体库：被平面图引用的附件计入引用数，删除时提示「方案平面图」并拒绝，引用详情新增 `proposal_floor_plans`。
+- 迁移 `0033_sales_media_permissions`：给 `sales` 补 `media:view` / `media:upload`（不含 delete / replace），否则业务员无法从媒体库选图或上传。
+- 后台：方案详情页新增「方案平面图」区块（上传 / 从媒体库选用 / 改名 / 上下移 / 删除 / 预览），新增方案对话框可先暂存多张，方案创建成功后一次性绑定；「上传平面图」按钮对 `proposal:edit` 之外的只读用户禁用。
+- 门户：分享页「方案信息」改成左右两栏，右侧为平面图缩略图（超过 4 张显示 `+N`），点击进原生 `<dialog>` 全屏查看器，支持滚轮 / 双指 / 按钮缩放（0.5x–5x）、放大后拖拽、左右键切换。
+
+### 产品包重传：预检 + 覆盖 / 追加 / 跳过
+- 新增 `POST /api/v1/products/import/preflight`：上传后只解析、只查重，**零写库**，返回 token（2 小时有效）+ 新增 / 已存在 / 无法导入计数 + 冲突清单（最多 200 条）。
+- 新增 `POST /api/v1/products/import/commit`：按 `overwrite` / `append` / `skip` 真正写库，返回 `created_count / updated_count / appended_count / skipped_count / images_replaced / images_appended / backup_id`；token 单次消费，重复提交返回 409。
+- 新增 `DELETE /api/v1/products/import/preflight/{token}`：取消预检并立刻删除暂存；暂存目录 `PRODUCT_IMPORT_STAGING_DIR`（默认 `/tmp/pim_import_staging`，TTL 2 小时，预检入口每小时限频清理一次）。
+- **合并规则（关键）**：`RowFields.provided` 记录「这一行真的填了哪些列」。覆盖只写填了值的单元格，空白保留库里原值（面价、状态、库存都不会被空白打回默认）；追加只在库值为空时写；图片覆盖整套替换（该行没图则保留原图），追加按附件去重后追加；场景图软删除行会恢复而不是重复 INSERT（`product_scene_image` 主键是二元组）；标签覆盖整组替换、追加取并集。
+- **标签自动创建（2026-10-29 追加）**：表格里出现系统还没有的标签（例如新系列「摩耳」）不再只记一条「已忽略」，提交时自动创建并绑定。类型取「单元格显式类型 > 导入参数默认类型」：单元格支持 `系列:摩耳`、`系列=摩耳`、`摩耳(系列)`、`series:Moer`，不写类型时按预检弹窗里选的「系列（默认）/ 未分组」创建；同名已有标签直接复用，不会重复建。预检会列出「将新建 N 个标签」及其名称，提交结果增加 `created_tags` / `new_tag_names`。
+- 面价占位价 99999 与 `completeness_status=pending` 联动：写占位价必带 pending，写真实价格则把悬挂的「待补充」恢复成 complete。
+- 覆盖前快照：`services/product_import_backup.py` 把受影响产品的原值与图片附件 id 写成 JSON（返回 `backup_id`），恢复入口 `python -m app.scripts.restore_import_backup <backup_id> [--dry-run]`；产品 id 不变，方案 / 报价 / 分享引用不受影响。
+- 后台导入页：去掉「跳过已存在」勾选框，改成「上传 → 预检弹窗（三选一 + 冲突示例 + 无法导入明细）→ 结果面板（新增 / 更新 / 追加 / 跳过 / 失败 + 图片替换与追加 + 快照 id）」。旧 `POST /products/import?skipIfExists=` 保留兼容。
+
+## v1.9.6 — 2026-10-28
+
+本版交付**首批 20 系列产品属性索引**（词典 `series` 选项 + 217 条系列级 mapping，
+回填 17879 条产品属性值，全部条目已业务确认）；修复「现代风格」这类自然语言查询
+返回空的三层根因（词典别名不全、模型字典上下文只有 option code、纯英文词被误判成
+产品型号）；在关键词/属性精确层一无所获时新增两级语义兜底（先把自然语言**归一元
+到受治理属性取值**再查一次，仍无果才对召回候选做**语义筛选**）；门户新增浏览器
+本地查询历史；并修复 AI 配置中心的改动约 15 秒后静默回落环境变量的问题。
+
+### 系列属性索引扩充（2026-10-28 数据工具，随后端镜像重发布生效）
+- `seed_attribute_dictionary` 新增 `SERIES_OPTIONS`：20 个系列选项 + 65 个别名，`option_code` 取系列 `tag_name`，使「灵多系列」这类问句能在查询理解层解析成 `series=灵多`。
+- `backfill_product_attributes` 新增「系列（+可选类目）」条目形态：按 `product_tag`(`tag_type=series`) 展开到该系列全部在售产品，展开不到成员时告警，幂等语义不变。
+- 新增 `backend/app/scripts/data/series_attribute_mapping.json`：217 条系列级规则（series/style/shape/material/color），覆盖 20 个系列。系列自身条目是 `product_tag` 事实回填；风格/桌形/材质/颜色由产品图视觉 + 官方画册/培训教材判定，其中新中式（领瑞、大都会）与现代（I-瓦尔纳Ⅱ）以官方培训教材「产品地图」分区为准，修正了视觉的 modern 误判。
+- 全部 197 条 AI 候选已于 2026-10-27 经业务逐行确认，`verified` 置 true；确认范围、确认人与日期写入 mapping 的 `_confirmed_by`/`_confirmed_at`/`_confirmed_scope`，逐条 note 亦追加确认信息。`source` 保持原值（`ai_inferred` 保留 AI 溯源），回退仍可按 `source`+写入日期精确软删。
+- 本地 `--check`：created=17879 / skipped=0 / unresolved=0。生效方式为容器内 `--check`→`--apply`；验收走知识网关问句与 `product_attribute_value` 统计。回退按 `source`+日期软删 `product_attribute_value`，不硬删、不清表。
+
+### 自然语言检索与查询历史（2026-10-28 修复「现代风格」返回空）
+- **根因（三层）**：① 规则层只认词典别名，说法没列进别名表就没有硬条件；
+  ② 模型规划器拿到的字典上下文**只有 option code，没有中文名和别名**，
+  模型无法把「现代风格」映射到 `modern`；③ 纯英文词被型号正则误判成
+  `product_no`（「modern」→`product_no IN ('modern')`，把属性命中结果全部过滤空）。
+- **词典补齐**：每个 style/shape/material/color 选项都补「…风格/…风」后缀与
+  英文别名；`board` 补「板式」，`rect` 补「方桌/矩形桌」。
+- **模型规划器**：字典上下文改为 `code(中文名): option(别名|别名)` 形态，
+  并明确要求把多字少字、口语化、带程度词的说法按语义归到已定义取值。
+- **型号提取**：`_extract_product_nos` 增加形态判据（必含数字或 `-._/`）与
+  词典别名排除；本库 4024 个在售型号全部含数字，判据安全。`alias_labels`
+  修正为存整条别名（原先 `list(字符串)` 把「现代风格」拆成了单字）。
+- **新增 `app/knowledge/semantic.py`**：关键词/属性精确层一无所获时的两级兜底。
+  先 `resolve_facets`——让模型把自然语言归一到受治理取值（词典内 fail-closed，
+  编造的属性/取值一律丢弃）再跑一次精确 SQL；仍无果再 `screen_products`——
+  对宽松/文本召回候选做一次语义筛选，挑最贴切的若干款。两级都不成立保持为空
+  （「巴洛克式会议桌」仍然为空）。响应新增 `semantic_interpretation` 字段。
+- **停用词**：「风格/样式/款式/系列」这类结构后缀不再作为 AND 关键词，
+  否则「现代简约风格」剔除「现代简约」后剩下的「风格」会清空结果。
+- **门户查询历史**：新增浏览器 localStorage 历史（`openpim.portal.queryHistory.v1`，
+  上限 30 条，只存查询文本与时间，隐私模式下降级不报错），点击条目可重跑；
+  「本次查询」回显补充时间戳。不新增任何服务端存储。
+- 测试：新增 `tests/unit/test_knowledge_semantic.py`（47 例：解析容错、fail-closed、
+  负向保持空、型号提取、归一/筛选/兜底链路）；全量 `tests/unit` 554 passed / 5 skipped。
+
+### AI 配置中心：模型改动 15 秒后失效（2026-10-28 修复）
+- **现象**：在 AI 配置中心把选品检索模型改成 `gpt-4o-mini`，供应商后台收到的调用仍是 env 里的 `gpt-4o-mini`。
+- **根因**：`ai_config` 的进程内缓存只在「启动」与「保存配置」时刷新，没有周期刷新；`peek()` 超过 `CACHE_TTL_SECONDS`(15s) 就返回 None，`get_config()` 随即回落环境变量——管理员的显式配置被静默丢回 env。内容工坊 scope 同理。
+- **修复**：`peek()` 过期也返回旧快照（TTL 只是「该续期了」，不是「作废」）；`main.lifespan` 增加短于 TTL 的周期刷新任务，缓存始终是 DB 覆盖层真值；DB 抖动仍保留旧快照，不清空、不回落 env。
+- 验收：改配置后等 20 秒（超过旧 TTL）再查询，知识网关 `usage.model` 为 DB 覆盖值。
+- 测试：`tests/unit/test_ai_config_ttl.py`（过期快照仍生效、空缓存才回落 env、DB 抖动保留旧快照）；`test_ai_config.py::test_cache_ttl_expires` 改为锁新行为。
+
+## v1.9.5 — 2026-10-26
+
+本版本交付 AI 配置中心（`AI 功能 → AI 配置中心`，仅管理员）：选品检索与内容工坊两个域的 API 地址、API Key、对话模型 ID、可选模型列表、嵌入模型与超时改为可在后台维护，数据库覆盖优先、留空回落环境变量，保存后约 15 秒生效无需重启。同时重写内容工坊/独立选题的提示词（写作规则前置、合规规则改为后台执行），并把产品事实从 3 个字段扩展到 12 个（含受治理属性，价格/库存/供应商等隐私字段一律不进提示词）。
+
+### AI 配置中心
+- 新增 `ai_provider_config` 表（迁移 `0031_ai_provider_config`）与 `ai:config` 权限码（仅 admin）。
+- 两个 scope：`knowledge`（选品检索/知识库/润色/推荐）与 `content`（内容工坊/独立选题）；逐字段覆盖，空值回落环境变量，关闭开关即整域回落。
+- 读取一律返回密钥掩码；`POST /ai/config/{scope}/test` 做最小连通性探测（10s 超时、不重试、不回传上游响应体）。
+- 适配器缓存按配置指纹重建，改 Key/模型后无需重启后端；启动时预热缓存。
+- `GET/PUT` 命中 `PermissionChecker("ai:config")` 并显式校验 `role_code=admin`，非管理员 403。
+
+### 内容生成质量
+- 内容工坊两个 DNA Skill 与独立选题模板重写：标题/正文写作规则前置，"事实规则只在后台执行，绝不能变成正文的口吻"，禁止把免责/核验话术写进 title/body/hashtags。
+- 生成侧 system 消息改为写手人格（`SYSTEM_PERSONA`），合规继续由后置守卫与 `verification_gaps` 兜底。
+- 产品事实扩展到 12 字段（品类/品牌/材质/材质说明/颜色/描述/受治理属性），仅保留可信来源属性值，`ai_inferred` 未确认的丢弃；`face_price`/`stock_status`/`data_source` 等一律不进提示词。
+- `--refresh` 种子模式：用代码模板原地刷新已存在的运营 Skill（原模式对已存在行只跳过）。
+
+### 发布后修复（并入 v1.9.5）
+- **迁移 0031 列名错误**：向 `permission` 插 `ai:config` 时用了不存在的 `code`/`name` 列，backend 启动即崩；已改为真实的 `perm_code`/`perm_name`，与 `0020_crm_perms` 写法对齐。
+- **AI 配置中心页面空白**：前端 `src/api/aiConfig.ts` 多读了一层 envelope（`resp.data.data`），恒取到空数组；已改为仓库约定的 `resp.data`。
+- **发布后白屏（须刷新才好）**：nginx 原本完全不发 `Cache-Control`，浏览器 heuristic 缓存旧 `index.html`，代码更新后旧入口 chunk 名 404。现入口 HTML 一律 `no-cache` 重新校验，带内容哈希的 `/admin/assets/` 与 `/assets/` 为 `public, max-age=31536000, immutable`。
+
+## v1.9.4 — 2026-10-23
+
+本版本合并三组能力：产品属性检索、内容 Skills/独立选题、方案空间与客户展示；同时把本地迁移链对齐到生产 `0024_attachment_biz_domain_compat` 基线，避免服务器升级时 revision 不识别。发布前并入一组界面修复：内容工坊改用「创作 Skills」口径、新增方案弹窗重排、分享页商品详情改为点击弹窗。
+
+### 产品属性检索
+- 引入受治理属性词典（类目、桌形、风格、材质、颜色、系列、尺寸、人数），支持中文别名、无空格组合、数值条件与否定条件。
+- `product.search` 按属性硬过滤：不同属性 AND，同一属性别名 OR；`shape` 只匹配桌形属性，描述/材质文本不能冒充桌形。
+- 三个业务确认的弧形会议桌（`P-104300001`/`P-104300002`/`P-104300003`）通过独立 mapping 回填 `shape=arc`；“弧形会议桌”精确命中且排除普通会议桌、弧形洽谈桌。
+- 无精确结果时返回“未找到符合指定桌形的产品”，不静默放宽硬条件。
+
+### 内容 Skills 与独立选题
+- 新增 Skills 管理中心（仅管理员）、独立选题模块和 Skills 选用开关。
+- 首批接入禹橙 DNA、言也 DNA 两套创作方法，各派生选题/内容 operational Skill；默认由模型自动选择，用户可手动覆盖。
+- 选题按办公空间解决方案 30%、真实项目案例 25%、产品知识 20%、交付安装 15%、本地服务 10% 的滚动窗口动态分配。
+- 内容域独立 `CONTENT_AI_*` 配置，模型白名单 `gpt-4o-mini`/`gpt-4o-mini`，不读取知识库 embedding 配置；缺少 key 时 fail-closed。
+- 内容生成与选题保留 JSON Schema 校验、合规过滤、产品事实回查和待核验清单。
+
+### 方案与客户展示
+- 方案明细支持业务员自由输入楼层/空间名称，后台按项目回填/复用空间编号；无项目也可保存名称快照。
+- 方案/报价保存产品快照、材质说明、楼层/空间标签；客户分享页按楼层/空间分组展示材质、颜色、材质说明。
+- 报价 PDF 增加楼层、空间、材质说明、颜色列；报价预填复制方案空间与快照。
+- 「新增方案」弹窗 640px → 920px，标签顶部对齐，名称/客户/关联客户/关联项目两列排布。
+- 方案明细编辑器新增 `compact` 模式：数量/备注/楼层/空间两列网格，材质说明跨整行；商品搜索与「添加商品」同行，窄屏改单列。
+
+### 界面对齐
+- 内容工坊生成表单的「DNA 来源」更名为「创作 Skills」，选项显示 Skill 名称并浅色标注所属 DNA，避免把创作方法与方法来源混为一谈。
+- 分享页商品列表只保留摘要列（商品/面价/数量/行合计）和「查看详情」，点击行弹出详情：规格、材质、颜色、材质说明、价格、数量与场景图缩略图网格，点缩略图从该图开始播放。
+- `ProductSceneCarousel` 监听 `initialIndex`，重复打开轮播可定位到所选场景图。
+
+### 数据库
+- 迁移链以生产运行镜像的 `0024_attachment_biz_domain_compat` 为唯一基线重建：0018-0024 采用生产运行镜像版本（`0018_qwen_embedding_hnsw` / `0019_crm_base_tables` / `0020_crm_perms` / `0021_content_tables` / `0022_reminders` / `0023_crm_sales_links_compat` / `0024_attachment_biz_domain_compat`）；本地旧分支 `0018_crm_core` / `0019_crm_detail` 弃用（移入 `backend/alembic/versions/回收站/`，不删除）。
+- 新增 `0025_crm_schema_compat`：在生产基线之后幂等补建 CRM 明细表（`project_members` / `entity_stage_logs` / `customer_dialogues` / `customer_dialogue_attachments` / `requirements` / `follow_ups` / `project_assets`），不再依赖 `create_all` 掩盖缺表；proposal/attachment 的 CRM 链接列仍由生产 0023/0024 负责，不重复加列。
+- 本地新功能迁移重编号续链：`0026_catalog_attributes` / `0027_content_skills` / `0028_project_spaces` / `0029_project_remark` / `0030_content_dna_fields`（head，单 head）。
+- 生产库（现 `0024`）沿 `0025 → 0026 → … → 0030` 连续链升级，全程幂等 DDL，不重复建表/列；`content:manage` 权限在生产 0024 库上由 `0027_content_skills` 补种。
+## v1.9.3 — 2026-10-12
+
+本版本引入 CRM-Lite 模块：客户域、项目域、驾驶舱、新媒体工坊和提醒引擎，新增 16 个权限码与 manager/designer/operator 角色，前端新增 7 个视图与通知组件。向后兼容，生产升级按 `docs/云端更新包.md` 正常执行迁移并保留数据卷即可；需求设计见 `docs/10-客户项目与新媒体(CRM-Lite).md`（其 A9 条原目标 v1.10.0，实际以本节声明的 v1.9.3 为准）。
+
+### 新增
+- 客户域：客户 CRUD、阶段状态机、PII 脱敏、对话/需求/跟进/方案子资源
+- 项目域：项目 CRUD、成员管理、图纸资产（.dwg/.dxf/.skp/.psd 上传）
+- 驾驶舱：5 端点（overview/funnel/sales/todos/content）+ 缓存层
+- 新媒体工坊：AI 生成 + 合规守卫 + 发布登记 + 曝光录入 + Excel 导入
+- 提醒引擎：R1/R1b/R2/R3/E1 规则 + worker + 通知
+- 权限：16 新权限码 + manager/designer/operator 角色
+- 前端：7 视图 + 3 组件 + echarts 懒加载
+
+### 数据库
+- 新增迁移 `0020_crm_perms`（16 个 CRM 权限码 + manager/designer/operator 角色种子）、`0021_content_tables`、`0022_reminders`，迁移 head 前进到 `0022_reminders`
+- customers/projects 相关表由启动入口的初始化流程（`Base.metadata.create_all`）创建，不在迁移内
+
+## v1.9.2 — 2026-09-29
+
+本版本修复 AI 门户查询结果区的三类缺陷（卡片网格退化、推荐卡片不出图、答案 Markdown 原文直出），把后台与门户的深色模式从「逐页堆 `:global(.dark-mode)` 覆盖」重做为按语义 Token 的实现，并补一个非 Docker 的本机一键启动脚本。
+
+### 门户（portal）：查询结果区修复
+
+查询结果区此前有三处互相独立的缺陷：结果一多整堆卡片退化成普通网格、未查询时推荐卡片不显示图片、答案里的 Markdown 被当纯文本原样输出。
+
+- `HeroDeck.vue` 重写：固定 5 个卡位（中心 + 左右各两环）做叠卡，`SLOT_ORDER` 按张数选卡位（1→中心；2→左右内环；3→中心+内环；4→两对内外环；≥5→全部），删掉原先「`products.length <= 9` 时才扇形、超过就落 `hero-deck--grid` 三列平铺」的分支，`:class` 恒为 `hero-deck--fan`。结果超过 5 条时用 `windowStart` 做循环窗口；滚轮用**函数 ref 手动挂 non-passive 监听**并 `preventDefault()`（模板 `@wheel` 在某些场景不可靠，passive 下 `preventDefault` 无效还会打警告），220ms 手势合并窗口防止触控板惯性连跳；键盘 `↑↓←→/PageUp/PageDown`（卡堆 `tabindex=0`）与窄屏「上一组/下一组」按钮共用同一 `step()`。卡片 key 为 `variant-index-业务ID`，轮换时数据索引与卡位一对一；`watch(() => props.products)` 在换一次查询时归零窗口（同时盯 length 和数组引用，同数量的重查也能复位）。
+- `ProductCard.vue`：`failedUrl` 记录**哪一条地址**失败而非布尔值，`onError` 判重避免重复触发，换地址时 watch + `:key` 重置；媒体区固定 `aspect-ratio` + 图标文字占位块，加载前后卡片高度一致；新增 `data-image-state="ok|error|missing"` 便于排障。状态显式分流为 loading / empty / recommend / placeholder，不再互相顶替。
+- `AnswerBody.vue` 改为 Markdown 渲染容器 + 角标事件委托。
+- `Conversation.vue`：`deckMode` 收敛为五种互斥状态并补文档注释。
+- 新增 `utils/image.ts`：图片 URL 统一解析。按优先级做字段兼容（`cover_image_url` → 13 个别名字段 → `images[].file_url` → `scene_images`），递归取第一个可用值；协议白名单（http/https/blob、`//` 协议相对、`data:image/*` 放行，`javascript:` 等判死）。修的是「有产品图但没设 `is_cover`」的产品 `cover_image_url` 为 `null`、前端没有回退字段、直接渲染占位块（表现为卡片不显示图片）的问题。`Product.cover_image`（`backend/app/models/product.py:138`）只在某张图显式 `is_cover=True` 时才返回，而 `is_cover` 仅由媒体导入流程写入，所以产品完全有图也可能取不到主图。**后端 `is_cover` 语义本轮未改**——那会影响详情页/分享页/报价等多个接口，超出本次范围；产品完全没有图片时（`images` 为空）仍是数据问题，只能显示统一占位块。
+- 新增 `utils/markdown.ts`：无第三方依赖的 Markdown → 安全 HTML 渲染器，自写块级（标题/分隔线/代码块/引用/有序无序列表含嵌套/表格含对齐/段落软换行）与行内（粗体/斜体/删除线/行内代码/链接）解析。**安全模型**是不在输入上预转义，而是在输出时对每段文本 `escapeHtml`，最终 HTML 里出现的标签全部由本文件生成；链接走协议白名单；答案里的 `<img>` / `<script>` 被当纯文本转义，无注入面。
+- `citations.ts` 新增 `answerSource()` / `citationInfoOf()`，并把角标折成私有区占位符（markdown 语法字符里没有这两个码位，解析不会动它），由 `markdown.ts` 在行内阶段还原为 `<button class="citation" data-source>`。复制答案、答案容器样式、`.citation` / `.citation--unresolved` 样式全部保留。
+- `main.css`：叠卡卡位/固定高度/overflow、`.md-*` 排版（行高 1.85、标题/段落/列表间距、`.md-table-scroll` 横向滚动、`.md-pre` 代码块与等宽字体）、占位与骨架卡。同时删除 `.product-grid` 死规则。
+- `AppHeader.vue`：新增 `showSubLabel` 属性，查询工作台（chat）把左上角让位给右上角的「进入后台 / 退出」两个文字入口，登录页和分享页保持默认 `true` 不动「门户」字样。
+- 新增 `tests/e2e/deck-markdown.spec.ts`：15 条验收用例。
+
+### 后台与门户：深色模式重构
+
+#### 根因
+
+1. **颜色没有按语义角色分层**：视图里到处是硬编码（`rgba(30, 50, 90, α)`、`#fff`、`#5E6470`、`#f0f0f0`，合计约 600 处），深色模式只能靠每个视图再写一遍反色值。
+2. **页面级「本地别名块」遮蔽全局变量**：`Products` / `ProductDetail` / `Manuals` / `Proposals` / `ProposalDetail` / `Quotations` / `ProposalItemEditor` 在 `.xxx-page` 上自定义了 `--glass-bg: rgba(255,255,255,.72)` 等别名，`:root` 的 Token 改了也会被它们盖掉。
+3. **Element Plus 只换了 `--el-color-primary`**：下拉面板、弹窗、日期选择器、表格、消息提示的背景走 `--el-bg-color-overlay` / `--el-fill-color-blank` 等一整套变量，没换就还是白底。
+4. **「实底 + 反白」控件没有独立的文字色 Token**：深色下主色变浅后出现白底白字（分页选中、视图切换选中、头像、实底按钮）。
+
+#### 主题 Token（后台 design-system.css）
+
+浅色值原样搬进 `:root`（视觉零变化，已用计算样式逐项比对旧部署验证 0 差异），深色挂在 `html.dark-mode`：
+
+- 表面：`--pim-page #171e22` / `--pim-header` `--pim-sidebar` `--pim-surface-soft #202a2e` / `--pim-surface #283439` / `--pim-overlay` `--pim-field` / `--pim-media-bg`
+- 文字：`--pim-text-primary #edf1ee` / `--pim-text-secondary #b9c8c2` / `--pim-text-soft` / `--pim-text-faint` / `--pim-text-disabled`
+- 描边：`--pim-border` `--pim-surface-border` `--pim-line` `--pim-line-strong` `--pim-control-border #3e5052` 起
+- 强调：`--pim-accent-solid #a4c8b4` + `--pim-on-accent #171e22`（松绿实底配深墨字），木色 `--pim-accent #d5bca4`，峡湾蓝 `--pim-fjord #a9c8dc` 与 `--pim-focus-ring`
+- 状态：`--pim-success` / `--pim-warning` / `--pim-danger` / `--pim-info` 各自带 `-bg` / `-border` 档
+- `--pim-brand` triplet 约定只经 `rgba(var(--pim-brand), α)` 使用：浅色是海军蓝淡色，深色自动变成近白淡色，约 200 处 tint（文字/描边/浅填充）一份代码两种主题
+
+Element Plus 深色变量（`--el-bg-color` / `--el-bg-color-overlay` / `--el-fill-color-*` / `--el-text-color-*` / `--el-border-color*` / `--el-tag-*` / `--el-mask-color` / `--el-overlay-color-lighter` 等）在 `.dark-mode` 内成套赋值，下拉、弹窗、抽屉、日期面板、消息提示、加载遮罩随之全部变深；`effect="dark"` 的实底标签文字换成 `--pim-on-accent`（原反白只有 2.2:1）。
+
+#### 门户（portal）深色模式
+
+`portal/src/styles/main.css` 原本就是全 Token 化，新增 `.dark-mode` 语义块（页面 `#171e22` / 卡片 `#283439` / 一级容器 `#202a2e` / 文字 `#edf1ee`·`#b9c8c2` / 松绿 `#a4c8b4` / 峡湾蓝 `#a9c8dc` / 木质 `#d5bca4`）；实底按钮与选中胶囊的文字切到 `--on-ink` / `--on-pine`。新增 `utils/theme.ts`：与后台同源共用 `localStorage['theme']`，监听系统偏好变化与 `storage` 事件——后台切主题时，被 iframe 嵌入 AI 选品页的门户文档同步换肤。`AppHeader.vue` 右侧新增主题开关，并按主题切换彩色/白色两版 Logo。
+
+#### 主题状态
+
+- 新增 `frontend/src/composables/useTheme.ts`：`light / dark / system` 三态，`initTheme()` 在 `main.ts` 挂载 Vue **之前**落 `<html>` 类，登录页、分享页等没有 ThemeToggle 的界面首帧就是正确主题，不再先闪一帧浅色；`system` 下注册 `matchMedia` 监听，系统主题变化实时响应。
+- `ThemeToggle.vue` 改用该单例；持久化键仍为 `localStorage['theme']`。
+
+#### 迁移方式（29 个视图/组件/布局）
+
+脚本化替换 + 人工语义修正：删除全部 `:global(.dark-mode)` 覆盖规则；`rgba(30,50,90,α)` → `rgba(var(--pim-brand),α)`；`#5E6470`/`#f0f0f0`/状态色/图片控件色按语义映射；本地别名块改指向全局 Token；「实底+反白」控件（分页选中、视图切换、头像、场景图角标、账户强按钮）改用 `--pim-accent-solid` + `--pim-on-accent`；产品缩略图/灯箱控制钮走 `--pim-media-bg` / `--pim-media-control-*`，图片本身不反色。分享结果弹窗的二维码保留浅底深码，外面加一圈白 tile 承托（扫描兼容性优先）。
+
+#### 验收
+
+Playwright 无头浏览器实测（桌面 1440×900 + 移动 390×844）：后台 18 个页面 + 产品详情 + 登录页 + 新增产品弹窗 + 品牌下拉 + 账户弹窗 + 分页 + 门户登录/chat/分享页，浅色与深色双主题截图；计算样式 WCAG 对比度审计 0 项低于 AA（正文 ≥4.5:1，大字 ≥3:1）；控制台无报错；重开页面无主题闪烁（`initTheme` 挂载前落类）；浅色模式与旧部署逐项计算样式比对 0 差异。已知限制：本机 AI 密钥不可用，chat 真实回答的 Markdown 用同构 DOM 注入验证（`.md-*` 全部通过）；`#93a69f` 及更弱文字在 `#2f3d42` 抬升面上为 4.4:1，仅出现在极少数组合。
+
+### 运维脚本
+
+- 新增 `scripts/start_local_stack.sh`：非 Docker 的本机一键启动/停止/重启/查询，拓扑为 nginx `:888`（门户 `/`、后台 `/admin/`、`/api` 反代 `127.0.0.1:8000`）+ backend `:8000` + 本机原生 PG18 `:5433` + redis `:6379` + minio `:9100`。脚本里的 MinIO 与数据库口令是它为本机栈自设的默认值，**不是生产凭据**（生产 MinIO 凭据只存在于 `.env`，未进仓库；生产实跑的是 `minioadmin` / `minioadmin123`）。
+- 新增 `scripts/reembed_missing.py`：为缺失 embedding 的知识块补算。
+- `scripts/windows_demo_ports.ps1`：`3001` 的默认目标端口由 `5173` 改为 `888`，公网入口直接落生产 nginx，不再经过演示服务器。
+
+### 文档
+
+- 新增 `docs/9-17新增数据仪表盘需求实现计划.md`。
+- `README.md`「管理后台入口」一栏同步为生产 nginx，去掉已废弃的演示服务器端口。
+
+**本轮验证**：`scripts/build_frontends.sh` 构建通过（`vue-tsc --noEmit` 0 error；admin `✓ built in 6.43s`、portal `✓ built in 1.19s`）；按本文件顶部清单重建 nginx 镜像与容器后，`:888` 六个入口（`/` `/chat` `/admin` `/admin/` `/share/` `/api/v1/health`）全部 200，容器内 8 个 portal 资产与宿主机构建产物 **md5 逐一一致**，真实浏览器渲染无白屏、无控制台报错；`scripts/secret_scan.sh` 0 hits。门户 e2e（含新增 15 条）在桌面 + 移动两个项目下全绿。
+
+**已知缺口（本轮未修）**
+
+- 后端 `/api/v1/health` 在本机报 `"version":"dev"`：`docker-compose.yml` 把 `APP_VERSION` 默认成 `dev`，压不到第 3 处的兜底值。要让版本页说真话，需按 `README-OPS.md`「升级发布 runbook」导出 `APP_VERSION` / `BUILD_ID` / `GIT_COMMIT` / `BUILD_TIME` 后重建 backend。
+- 本轮未跑后端全量 `pytest` 与后台 `playwright test`（前端已跑 `vue-tsc --noEmit` + 构建 + 门户 e2e）。合并前应补跑 `版本控制规范和Git.md` §7 发布门禁。
+- 门户窄屏（≤1024px）仍是横向 scroll-snap 卡片带而非扇形，为满足「移动端避免卡片溢出屏幕」的既有设计决策。
+
 ## v1.9.1 — 2026-08-07
 
 本版本将当前工作区中尚未发布的产品媒体导入、Knowledge Gateway / AI 能力增强、媒体访问和运维编排改动统一发布，并同步项目文档与迁移交付物。
@@ -96,7 +347,7 @@
 「已知缺口」用 `scripts/build_frontends.sh` 重跑以恢复 `/admin/` base 和真实版本元数据。
 
 **部署方式的例外**：`docker compose up -d` 目前会失败在
-`stat /run/guest-services/distro-services/richangpim.sock: no such file or directory`
+`stat /run/guest-services/distro-services/openpim.sock: no such file or directory`
 （Docker Desktop 对本 WSL 发行版的集成 socket 不存在），所以本轮是把新 dist 和改过的
 `files.py` 用 `docker cp` 送进正在运行的容器，再 `nginx -s reload` / `docker restart backend`
 完成的。`docker compose build nginx backend` 已经成功、镜像是新的，socket 问题解决后应按
@@ -232,7 +483,7 @@ MINOR 位进到 9 而不是发 v1.8.6：本轮换掉的是表格排版体系、�
 
 ### 发布与上线（2026-07-31 实测）
 
-- 提交 `9cd132c`、annotated tag `v1.9.0`，均已推到 `origin/main`（`github.com/tyche66/OpenPIM`）。
+- 提交 `9cd132c`、annotated tag `v1.9.0`，均已推到 `origin/main`（`github.com/tyche66/AI-OpenPIM`）。
 - 生产栈按「升级发布 runbook」重建：`scripts/build_frontends.sh` 出产物后 `docker compose build backend nginx`
   + `up -d --no-deps`。`/api/v1/version` 实测
   `1.9.0 / local-20260731T134109Z / 9cd132c / 2026-07-31T13:41:09Z / production`，与 dist 里的
@@ -240,7 +491,7 @@ MINOR 位进到 9 而不是发 v1.8.6：本轮换掉的是表格排版体系、�
 - 四个入口：`:888/` 200、`:888/admin` 301→`/admin/`、`:888/admin/` 200（后台 JS 200 `application/javascript`）、
   `:888/share/abc` 200、`:888/api/v1/health` 200；演示服务器 `:5173/admin/` 与 `:5173/chat` 200。
   `alembic current` = `0017_operation_log_username (head)`。
-- 回滚镜像留了 `richangpim-nginx:pre-v190` / `richangpim-backend:pre-v190`，暂不清理。
+- 回滚镜像留了 `openpim-nginx:pre-v190` / `openpim-backend:pre-v190`，暂不清理。
 - 全量备份迁移包：`/home/AI-PIM/OpenPIM_v1.9.0_20260731_215300.tar.gz`（240,369,356 B，
   sha256 `cb4f9fc1…99ca6`），结构对齐 v1.8.0 参考包，`sha256sum -c` 20/20 通过，
   换目录解包复验过源码锚点与 bundle 内的 `v1.9.0` tag。打法与恢复步骤见新增的 `MIGRATION_BUNDLE.md`。

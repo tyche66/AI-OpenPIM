@@ -111,34 +111,34 @@ def main():
 
     status, _, data = request(opener, args.base_url, "brands", token)
     brands = data.get("data", {}).get("list", [])
-    check(11, "pilot brand exists", status == 200 and any(x.get("brand_name") == "pilot" for x in brands))
+    check(11, "Pilot brand exists", status == 200 and any(x.get("brand_name") == "pilot" for x in brands))
 
     status, _, data = request(opener, args.base_url, "suppliers", token)
     suppliers = data.get("data", {}).get("list", [])
     pilot_supplier = next((x for x in suppliers if x.get("supplier_name") == "pilot"), None)
-    check(12, "pilot supplier exists", status == 200 and pilot_supplier is not None)
+    check(12, "Pilot supplier exists", status == 200 and pilot_supplier is not None)
 
     status, _, data = request(opener, args.base_url, "tags", token)
     tags = data.get("data", {}).get("list", [])
-    mingda = next((x for x in tags if x.get("tag_name") == "铭达" and x.get("tag_type") == "series"), None)
+    pilot_series = next((x for x in tags if x.get("tag_name") == "pilot" and x.get("tag_type") == "series"), None)
     style = next((x for x in tags if x.get("tag_name") == "新中式" and x.get("tag_type") == "style"), None)
-    check(13, "Mingda series tag exists", status == 200 and mingda is not None)
+    check(13, "Pilot series tag exists", status == 200 and pilot_series is not None)
     check(14, "pilot style tag exists", style is not None)
 
     status, _, data = request(opener, args.base_url, "products?page=1&size=20", token)
     products = data.get("data", {}).get("list", [])
     check(15, "product list contract", status == 200 and data.get("data", {}).get("total", 0) >= 13)
 
-    query = urllib.parse.urlencode({"tag_ids": mingda["id"], "page": 1, "size": 20})
+    query = urllib.parse.urlencode({"tag_ids": pilot_series["id"], "page": 1, "size": 20})
     status, _, data = request(opener, args.base_url, f"products?{query}", token)
     pilot = data.get("data", {}).get("list", [])
-    check(16, "Mingda series filter returns 13", status == 200 and len(pilot) == 13, f"count={len(pilot)}")
-    check(17, "pilot product numbers are unique EMD", len({x.get("product_no") for x in pilot}) == 13 and all(x.get("product_no", "").startswith("EMD") for x in pilot))
+    check(16, "Pilot series filter returns 13", status == 200 and len(pilot) == 13, f"count={len(pilot)}")
+    check(17, "pilot product numbers are unique PIM", len({x.get("product_no") for x in pilot}) == 13 and all(x.get("product_no", "").startswith("PIM") for x in pilot))
     check(18, "placeholder pricing is marked pending", all(x.get("face_price") == 99999 and x.get("completeness_status") == "pending" for x in pilot))
     check(19, "pilot stock remains unknown", all(x.get("stock_status") == "unknown" for x in pilot))
-    check(20, "pilot tags are linked", all({"铭达", "新中式"}.issubset(set(x.get("tags", []))) for x in pilot))
+    check(20, "pilot tags are linked", all({"pilot", "新中式"}.issubset(set(x.get("tags", []))) for x in pilot))
 
-    detail_id = next((x["id"] for x in pilot if x.get("product_no") == "EMD89R.320190"), "")
+    detail_id = next((x["id"] for x in pilot if x.get("product_no") == "PIM89R.320190"), "")
     status, _, detail = request(opener, args.base_url, f"products/{detail_id}", token)
     check(21, "pilot detail provenance", status == 200 and detail.get("specification") == "W3200*D1900*H750 mm" and bool(detail.get("data_source")))
 

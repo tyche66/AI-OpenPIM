@@ -31,17 +31,17 @@ hr
 if docker version >/dev/null 2>&1; then
   docker compose ps --format '  {{.Service}}\t{{.Status}}' 2>/dev/null || echo "  compose 项目没在跑"
   echo
-  BACKEND_DB="$(docker exec richangpim-backend-1 python -c "
+  BACKEND_DB="$(docker exec openpim-backend-1 python -c "
 import os, re
 url = os.environ.get('DATABASE_URL', '')
 print(re.sub(r'//([^:]+):[^@]*@', r'//\\1:***@', url))
 " 2>/dev/null)"
   echo "  后端连的库: ${BACKEND_DB:-<容器没在跑>}"
   echo "  （postgres 那个主机名只在 compose 网络里解析，宿主机上 ping 不到，这是对的）"
-  ALEMBIC="$(docker exec richangpim-backend-1 alembic current 2>/dev/null | tail -1)"
+  ALEMBIC="$(docker exec openpim-backend-1 alembic current 2>/dev/null | tail -1)"
   echo "  alembic:    ${ALEMBIC:-<未知>}"
-  USERS="$(docker exec richangpim-postgres-1 psql -U pim -d ai_pim -tAc 'select count(*) from "user"' 2>/dev/null | tr -d ' ')"
-  PRODUCTS="$(docker exec richangpim-postgres-1 psql -U pim -d ai_pim -tAc 'select count(*) from product' 2>/dev/null | tr -d ' ')"
+  USERS="$(docker exec openpim-postgres-1 psql -U pim -d ai_pim -tAc 'select count(*) from "user"' 2>/dev/null | tr -d ' ')"
+  PRODUCTS="$(docker exec openpim-postgres-1 psql -U pim -d ai_pim -tAc 'select count(*) from product' 2>/dev/null | tr -d ' ')"
   echo "  数据规模:   用户 ${USERS:-?} / 商品 ${PRODUCTS:-?}  <- 生产应该是 7 个用户量级，不是 1"
 else
   echo "  连不上 Docker daemon（Docker Desktop 没开？）"

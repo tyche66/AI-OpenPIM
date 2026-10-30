@@ -14,11 +14,15 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 import AppHeader from '@/components/AppHeader.vue'
+import FloorPlanGallery from '@/components/FloorPlanGallery.vue'
+import FloorPlanViewer from '@/components/FloorPlanViewer.vue'
+import ShareDetailDialog from '@/components/ShareDetailDialog.vue'
 import ShareSceneDialog from '@/components/ShareSceneDialog.vue'
 import {
   ShareAccessError,
   getShareContent,
   type ShareEnvelopeData,
+  type ShareFloorPlan,
   type ShareProductItem,
   type ShareProposalContent,
   type ShareQuotationContent,
@@ -37,6 +41,8 @@ const passwordInput = ref('')
 const share = ref<ShareEnvelopeData | null>(null)
 const scenes = ref<ShareSceneImage[]>([])
 const sceneOpen = ref(false)
+const detailOpen = ref(false)
+const detailItem = ref<ShareProductItem | null>(null)
 const failedImages = ref<Set<string>>(new Set())
 
 const STATUS_LABELS: Record<string, string> = { draft: '草稿', confirmed: '已确认' }
@@ -51,6 +57,24 @@ const quotation = computed(() =>
 const items = computed<ShareProductItem[]>(
   () => (isProposal.value ? proposal.value?.items : quotation.value?.items) || [],
 )
+
+/**
+ * Track D：平面图只在方案分享里出现；报价分享与旧分享没有这个字段，
+ * 一律当成「没有平面图」，不渲染右侧栏。
+ */
+const floorPlans = computed<ShareFloorPlan[]>(() =>
+  isProposal.value
+    ? (proposal.value?.floor_plans || []).filter((plan) => Boolean(plan.image_url))
+    : [],
+)
+
+const planOpen = ref(false)
+const planIndex = ref(0)
+
+function openPlan(index: number) {
+  planIndex.value = index
+  planOpen.value = true
+}
 
 const headline = computed(() => {
   if (!share.value) return '分享预览'
@@ -84,6 +108,13 @@ function statusLabel(status?: string | null): string {
 function taxRateText(rate?: number | null): string {
   if (rate === null || rate === undefined) return MISSING_TEXT
   return `${(rate * 100).toFixed(0)}%`
+}
+
+function openScenes(item: ShareProductItem) {
+  const available = sceneImagesOf(item)
+  if (!available.length) return
+  scenes.value = available
+  sceneOpen.value = true
 }
 
 /** 含税小计由未税单价、数量、税率现算，后端只给未税 subtotal。 */
@@ -126,11 +157,63 @@ function sceneImagesOf(item: ShareProductItem): ShareSceneImage[] {
   return (item.scene_images || []).filter((image) => Boolean(image.image_url))
 }
 
-function openScenes(item: ShareProductItem) {
-  const available = sceneImagesOf(item)
-  if (!available.length) return
-  scenes.value = available
-  sceneOpen.value = true
+// ---------------------------------------------------------------------------
+// Track C：按楼层/空间分组展示
+// ---------------------------------------------------------------------------
+
+interface SpaceGroup {
+  key: string
+  floor: string
+  space: string
+  items: ShareProductItem[]
+}
+
+/** 楼层/空间分组标题：优先 floor_label + space_label，缺失时归入"未指定位置"。 */
+const spaceGroups = computed<SpaceGroup[]>(() => {
+  const map = new Map<string, SpaceGroup>()
+  for (const item of items.value) {
+    const floor = (item.floor_label || '').trim()
+    const space = (item.space_label || '').trim()
+    const key = `${floor}||${space}`
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        floor: floor || MISSING_TEXT,
+        space: space || MISSING_TEXT,
+        items: [],
+      })
+    }
+    map.get(key)!.items.push(item)
+  }
+  return [...map.values()]
+})
+
+function groupTitle(group: SpaceGroup): string {
+  if (group.floor !== MISSING_TEXT && group.space !== MISSING_TEXT) {
+    return `${group.floor} · ${group.space}`
+  }
+  if (group.floor !== MISSING_TEXT) return group.floor
+  if (group.space !== MISSING_TEXT) return group.space
+  return '未指定位置'
+}
+
+/** 材质/颜色/材质说明/规格：只在商品详情弹窗里使用，见 ShareDetailDialog。 */
+function categoryText(item: ShareProductItem): string {
+  const snapshot = item.product_snapshot
+  const value = snapshot?.category_name ?? item.category_name
+  return value || MISSING_TEXT
+}
+
+/** 打开商品详情弹窗；弹窗内再点“查看场景图”时才进入灯箱。 */
+function openDetail(item: ShareProductItem) {
+  detailItem.value = item
+  detailOpen.value = true
+}
+
+/** 关闭后必须把 item 一起复位，否则再次点同一个商品（或点关闭）时 watch 不会触发。 */
+function closeDetail() {
+  detailOpen.value = false
+  detailItem.value = null
 }
 
 async function load() {
@@ -212,11 +295,30 @@ onMounted(load)
           <div class="panel__title"><h2>{{ isProposal ? '方案信息' : '报价信息' }}</h2></div>
           <span class="status-pill status-pill--ok">有效链接</span>
         </div>
-        <div class="kv-grid">
-          <template v-for="row in summaryRows" :key="row[0]">
-            <span>{{ row[0] }}</span>
-            <strong>{{ row[1] }}</strong>
-          </template>
+        <!-- 右侧留给平面图：没有平面图时退回单列，卡片不会无故变窄 -->
+        <div
+          class="summary-layout"
+          :class="{ 'summary-layout--with-plans': floorPlans.length > 0 }"
+        >
+          <div class="kv-grid">
+            <template v-for="row in summaryRows" :key="row[0]">
+              <span>{{ row[0] }}</span>
+              <strong>{{ row[1] }}</strong>
+            </template>
+          </div>
+          <div
+            v-if="floorPlans.length"
+            class="summary-plans"
+          >
+            <p class="summary-plans__label">
+              平面图
+              <span class="summary-plans__count">{{ floorPlans.length }} 张</span>
+            </p>
+            <FloorPlanGallery
+              :images="floorPlans"
+              @open="openPlan"
+            />
+          </div>
         </div>
       </section>
 
@@ -228,62 +330,74 @@ onMounted(load)
 
         <p v-if="!items.length" class="muted-text">这份分享暂无商品明细。</p>
 
-        <div v-else class="table-scroll">
-          <table class="compare-table share-table">
-            <thead>
-              <tr>
-                <th scope="col">商品</th>
-                <th scope="col" class="is-numeric">面价</th>
-                <th v-if="!isProposal" scope="col" class="is-numeric">单价</th>
-                <th scope="col" class="is-numeric">数量</th>
-                <th v-if="!isProposal" scope="col" class="is-numeric">税率</th>
-                <th v-if="!isProposal" scope="col" class="is-numeric">未税小计</th>
-                <th scope="col" class="is-numeric">{{ isProposal ? '行合计' : '含税小计' }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(item, index) in items" :key="item.product_id || index">
-                <td>
-                  <button
-                    type="button"
-                    class="share-product"
-                    :class="{ 'share-product--static': !sceneImagesOf(item).length }"
-                    :disabled="!sceneImagesOf(item).length"
-                    @click="openScenes(item)"
-                  >
-                    <span class="share-product__thumb">
-                      <img
-                        v-if="coverUrl(item, index)"
-                        :src="coverUrl(item, index) as string"
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        width="56"
-                        height="56"
-                        @error="onImageError(item, index)"
-                      />
-                      <span v-else class="share-product__fallback">{{ placeholderText(item.product_name) }}</span>
-                    </span>
-                    <span class="share-product__text">
-                      <span class="share-product__name">{{ item.product_name || MISSING_TEXT }}</span>
-                      <span class="product-code">{{ item.product_no || MISSING_TEXT }}</span>
-                      <span v-if="sceneImagesOf(item).length" class="share-product__hint">
-                        {{ sceneImagesOf(item).length }} 张场景图 · 点击查看
-                      </span>
-                    </span>
-                  </button>
-                </td>
-                <td class="is-numeric">{{ formatPrice(item.face_price) }}</td>
-                <td v-if="!isProposal" class="is-numeric">{{ formatPrice(item.unit_price) }}</td>
-                <td class="is-numeric">{{ item.quantity ?? MISSING_TEXT }}</td>
-                <td v-if="!isProposal" class="is-numeric">{{ taxRateText(item.tax_rate) }}</td>
-                <td v-if="!isProposal" class="is-numeric">{{ formatPrice(item.subtotal) }}</td>
-                <td class="is-numeric">
-                  <strong>{{ isProposal ? lineTotal(item) : taxedSubtotal(item) }}</strong>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div v-else class="space-groups">
+          <section
+            v-for="group in spaceGroups"
+            :key="group.key"
+            class="space-group"
+          >
+            <header class="space-group__head">
+              <h3>{{ groupTitle(group) }}</h3>
+              <span class="section-head__count">{{ group.items.length }} 项</span>
+            </header>
+
+            <div class="table-scroll">
+              <table class="compare-table share-table">
+                <thead>
+                  <tr>
+                    <th scope="col">商品</th>
+                    <th scope="col" class="is-numeric">面价</th>
+                    <th v-if="!isProposal" scope="col" class="is-numeric">单价</th>
+                    <th scope="col" class="is-numeric">数量</th>
+                    <th scope="col" class="is-numeric">{{ isProposal ? '行合计' : '含税小计' }}</th>
+                    <th scope="col" class="share-table__action-head">详情</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(item, index) in group.items" :key="item.product_id || index">
+                    <td>
+                      <button
+                        type="button"
+                        class="share-product"
+                        title="查看商品详情"
+                        @click="openDetail(item)"
+                      >
+                        <span class="share-product__thumb">
+                          <img
+                            v-if="coverUrl(item, index)"
+                            :src="coverUrl(item, index) as string"
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            width="56"
+                            height="56"
+                            @error="onImageError(item, index)"
+                          />
+                          <span v-else class="share-product__fallback">{{ placeholderText(item.product_name) }}</span>
+                        </span>
+                        <span class="share-product__text">
+                          <span class="share-product__name">{{ item.product_name || MISSING_TEXT }}</span>
+                          <span class="product-code">{{ item.product_no || MISSING_TEXT }}</span>
+                          <span class="share-product__hint">{{ categoryText(item) }}</span>
+                        </span>
+                      </button>
+                    </td>
+                    <td class="is-numeric">{{ formatPrice(item.face_price) }}</td>
+                    <td v-if="!isProposal" class="is-numeric">{{ formatPrice(item.unit_price) }}</td>
+                    <td class="is-numeric">{{ item.quantity ?? MISSING_TEXT }}</td>
+                    <td class="is-numeric">
+                      <strong>{{ isProposal ? lineTotal(item) : taxedSubtotal(item) }}</strong>
+                    </td>
+                    <td class="share-table__action">
+                      <button type="button" class="button button--secondary button--small" @click="openDetail(item)">
+                        查看详情
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </section>
 
@@ -294,5 +408,53 @@ onMounted(load)
     </template>
 
     <ShareSceneDialog :images="sceneOpen ? scenes : null" @close="sceneOpen = false" />
+
+    <!-- 平面图全屏：缩略图只是入口，缩放与多张切换都在这里 -->
+    <FloorPlanViewer
+      :images="planOpen ? floorPlans : null"
+      :start-index="planIndex"
+      @close="planOpen = false"
+    />
+
+    <!-- 商品详情：明细表只放摘要，规格/材质/颜色/材质说明与场景图在点击后展开 -->
+    <ShareDetailDialog :item="detailOpen ? detailItem : null" @close="closeDetail" @open-scenes="openScenes" />
   </main>
 </template>
+
+<style scoped>
+.space-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.space-group {
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.space-group__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--color-muted, #f5f5f5);
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+}
+
+.space-group__head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.share-cell--wrap {
+  max-width: 260px;
+  white-space: normal;
+  word-break: break-word;
+  font-size: 13px;
+  color: var(--color-muted-foreground, #6b7280);
+}
+</style>

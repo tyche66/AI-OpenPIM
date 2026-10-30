@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from urllib.parse import quote
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,7 +24,13 @@ from app.models.product import (
     SceneImage,
     product_scene_image,
 )
-from app.schemas.file import FilePresignResponse, FileReferences, FileUploadResponse
+from app.models.sales import Proposal, ProposalFloorPlan
+from app.schemas.file import (
+    FilePresignResponse,
+    FileReferences,
+    FileUploadResponse,
+    ProposalFloorPlanRef,
+)
 from app.services.thumbnails import THUMB_WIDTHS, purge_thumbnails, thumbnail_bytes
 
 router = APIRouter()
@@ -59,6 +65,38 @@ _ALLOWED = {
     ),
 }
 
+# HLD §12.4 图纸扩展名白名单（V2-21/V-08）
+_ALLOWED_EXT_DRAWING = frozenset({".dwg", ".dxf", ".skp", ".psd"})
+_DRAWING_MAX_SIZE = 95 * 1024 * 1024  # 95MB（nginx client_max_body_size=100M，留余量）
+
+
+def _get_file_extension(filename: str) -> str:
+    """取最后一段扩展名（小写）。a.dwg.exe → .exe"""
+    if "." not in filename:
+        return ""
+    return "." + filename.rsplit(".", 1)[-1].lower()
+
+
+def _validate_drawing_magic(data: bytes, ext: str) -> bool:
+    """魔数校验（HLD §12.4）。
+
+    DWG: AC10…（如 AC1015）
+    PSD: 8BPS
+    DXF: ASCII '  0 SECTION' 头宽松匹配
+    SKP: 无特定魔数，仅校验扩展名
+    """
+    if ext == ".dwg":
+        return data[:4] == b"AC10"
+    if ext == ".psd":
+        return data[:4] == b"8BPS"
+    if ext == ".dxf":
+        # DXF 文件以 ASCII "  0 SECTION" 开头（宽松匹配前 20 字节）
+        head = data[:20].decode("ascii", errors="ignore")
+        return "0" in head and "SECTION" in head
+    if ext == ".skp":
+        return True  # SKP 无特定魔数
+    return False
+
 _PREVIEW_EXPIRE_SECONDS = 900
 _DOWNLOAD_EXPIRE_MINUTES = 5
 _CONTENT_TOKEN_SCOPE = "file_content"
@@ -92,8 +130,7 @@ def _content_type_for(attachment: Attachment) -> str:
 
 def _iter_minio_object(obj) -> Iterator[bytes]:
     try:
-        for chunk in obj.stream(1024 * 1024):
-            yield chunk
+        yield from obj.stream(1024 * 1024)
     finally:
         obj.close()
         obj.release_conn()
@@ -147,7 +184,10 @@ async def list_files(
         )
         has_manual = (
             select(1)
-            .where(ProductManual.attachment_id == Attachment.id, ProductManual.is_deleted.is_(False))
+            .where(
+                ProductManual.attachment_id == Attachment.id,
+                ProductManual.is_deleted.is_(False),
+            )
             .exists()
         )
         has_scene = (
@@ -155,10 +195,20 @@ async def list_files(
             .where(SceneImage.attachment_id == Attachment.id, SceneImage.is_deleted.is_(False))
             .exists()
         )
+        has_floor_plan = (
+            select(1)
+            .where(
+                ProposalFloorPlan.attachment_id == Attachment.id,
+                ProposalFloorPlan.is_deleted.is_(False),
+            )
+            .exists()
+        )
         if referenced:
-            query = query.where(or_(has_product_image, has_manual, has_scene))
+            query = query.where(or_(has_product_image, has_manual, has_scene, has_floor_plan))
         else:
-            query = query.where(~or_(has_product_image, has_manual, has_scene))
+            query = query.where(
+                ~or_(has_product_image, has_manual, has_scene, has_floor_plan)
+            )
 
     total_result = await db.execute(select(func.count()).select_from(query.subquery()))
     total = total_result.scalar()
@@ -203,6 +253,7 @@ async def _count_refs(db: AsyncSession, attachment_id: UUID) -> int:
         (ProductImage, ProductImage.attachment_id),
         (ProductManual, ProductManual.attachment_id),
         (SceneImage, SceneImage.attachment_id),
+        (ProposalFloorPlan, ProposalFloorPlan.attachment_id),
     ]:
         result = await db.execute(
             select(func.count())
@@ -238,6 +289,17 @@ async def _check_refs(db: AsyncSession, attachment_id: UUID) -> list[str]:
     )
     if scene_result.scalar() > 0:
         refs.append("场景图")
+
+    floor_plan_result = await db.execute(
+        select(func.count())
+        .select_from(ProposalFloorPlan)
+        .where(
+            ProposalFloorPlan.attachment_id == attachment_id,
+            ProposalFloorPlan.is_deleted.is_(False),
+        )
+    )
+    if floor_plan_result.scalar() > 0:
+        refs.append("方案平面图")
 
     return refs
 
@@ -319,6 +381,28 @@ async def _fetch_references(db: AsyncSession, attachment_id: UUID) -> FileRefere
             "product_name": p.product_name,
             "doc_type": pm.doc_type,
         })
+
+    # Track D：方案平面图
+    pfp_result = await db.execute(
+        select(ProposalFloorPlan, Proposal)
+        .join(Proposal, Proposal.id == ProposalFloorPlan.proposal_id)
+        .where(
+            ProposalFloorPlan.attachment_id == attachment_id,
+            ProposalFloorPlan.is_deleted.is_(False),
+            Proposal.is_deleted.is_(False),
+        )
+    )
+    for pfp, prop in pfp_result.fetchall():
+        refs.proposal_floor_plans.append(
+            ProposalFloorPlanRef(
+                floor_plan_id=pfp.id,
+                proposal_id=prop.id,
+                proposal_no=prop.proposal_no,
+                proposal_name=prop.proposal_name,
+                floor_plan_name=pfp.name,
+                project_id=pfp.project_id,
+            )
+        )
 
     return refs
 
@@ -407,15 +491,24 @@ async def get_file_references(
 async def upload_file(
     request: Request,
     file: UploadFile = File(...),
+    biz_domain: str | None = Form(None),
+    biz_scope_id: UUID | None = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
     content_type = file.content_type or ""
-    if content_type not in _ALLOWED:
+    file_ext = _get_file_extension(file.filename or "")
+
+    if content_type in _ALLOWED:
+        file_type, max_size = _ALLOWED[content_type]
+    elif file_ext in _ALLOWED_EXT_DRAWING:
+        # HLD §12.4: 图纸扩展名放行，强制 content_type/file_type
+        file_type = "other"
+        max_size = _DRAWING_MAX_SIZE
+    else:
         raise HTTPException(
             status_code=422,
             detail={"code": 42202, "msg": f"不支持的文件类型: {content_type}"},
         )
-    file_type, max_size = _ALLOWED[content_type]
 
     data = await file.read()
     if len(data) > max_size:
@@ -423,6 +516,14 @@ async def upload_file(
             status_code=422,
             detail={"code": 42203, "msg": f"文件大小超过上限 {max_size} 字节"},
         )
+
+    # HLD §12.4: 魔数校验（DWG/PSD/DXF）
+    if file_ext in _ALLOWED_EXT_DRAWING:
+        if not _validate_drawing_magic(data, file_ext):
+            raise HTTPException(
+                status_code=422,
+                detail={"code": 42202, "msg": f"文件魔数校验失败: {file_ext}"},
+            )
 
     extension = content_type.split("/")[-1]
     if content_type == "application/pdf":
@@ -448,6 +549,8 @@ async def upload_file(
         file_size=len(data),
         storage_type="minio",
         oss_key=object_key,
+        biz_domain=biz_domain,
+        biz_scope_id=biz_scope_id,
     )
     db.add(attachment)
     await db.commit()
@@ -491,19 +594,29 @@ async def replace_file(
         raise HTTPException(status_code=404, detail={"code": 40401, "msg": "附件不存在"})
 
     content_type = file.content_type or ""
-    if content_type not in _ALLOWED:
+    file_ext = _get_file_extension(file.filename or "")
+
+    if content_type in _ALLOWED:
+        file_type, max_size = _ALLOWED[content_type]
+    elif file_ext in _ALLOWED_EXT_DRAWING:
+        # HLD §12.4: 图纸扩展名放行，强制 content_type/file_type
+        file_type = "other"
+        max_size = _DRAWING_MAX_SIZE
+    else:
         raise HTTPException(
             status_code=422,
             detail={"code": 42202, "msg": f"不支持的文件类型: {content_type}"},
         )
-    file_type, max_size = _ALLOWED[content_type]
 
     if file_type != attachment.file_type:
         raise HTTPException(
             status_code=422,
             detail={
                 "code": 42204,
-                "msg": f"替换文件类型不匹配：原文件类型为 {attachment.file_type}，新文件类型为 {file_type}",
+                "msg": (
+                    f"替换文件类型不匹配：原文件类型为 {attachment.file_type}，"
+                    f"新文件类型为 {file_type}"
+                ),
             },
         )
 
@@ -513,6 +626,14 @@ async def replace_file(
             status_code=422,
             detail={"code": 42203, "msg": f"文件大小超过上限 {max_size} 字节"},
         )
+
+    # HLD §12.4: 魔数校验（DWG/PSD/DXF）
+    if file_ext in _ALLOWED_EXT_DRAWING:
+        if not _validate_drawing_magic(data, file_ext):
+            raise HTTPException(
+                status_code=422,
+                detail={"code": 42202, "msg": f"文件魔数校验失败: {file_ext}"},
+            )
 
     extension = content_type.split("/")[-1]
     if content_type == "application/pdf":

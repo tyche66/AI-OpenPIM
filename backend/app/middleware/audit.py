@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import functools
+import inspect
 import logging
 import time
 from collections import deque
@@ -31,6 +32,21 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
 logger = logging.getLogger("app.audit")
+
+# HLD §6.5：敏感模块请求体审计统一 [redacted]（密码/密钥/客户 PII 等不落库）。
+# 新模块（客户/对话/跟进/需求/内容/提醒/驾驶舱）随 CRM 上线同步扩入。
+SENSITIVE_MODULES = {
+    "ai",
+    "auth",
+    "users",
+    "customers",
+    "customer_dialogues",
+    "follow_ups",
+    "requirements",
+    "content",
+    "reminders",
+    "dashboard",
+}
 
 # Rolling window of (timestamp, status) for 5xx counting in the last 24h.
 # Bounded: at one request per second for 24h this holds ~86k tuples (~few MB);
@@ -226,7 +242,7 @@ def audit_action(
             # V1.2 §5.2 / §6.5: redact request bodies for sensitive modules so
             # the audit log never persists passwords, AI keys or request-body
             # payloads from login/AI endpoints.
-            if module in {"ai", "auth", "users"} and body_summary:
+            if module in SENSITIVE_MODULES and body_summary:
                 body_summary = "[redacted]"
 
             try:
@@ -314,6 +330,16 @@ def audit_action(
             )
             return result
 
+        # FastAPI 用 ``call.__globals__`` 解析字符串注解（PEP 563 / ``from
+        # __future__ import annotations``）。wrapper 定义在 audit 模块，拿不到
+        # endpoint 所在模块的命名空间，遇到 ``UUID`` 等业务类型就会解析失败
+        # （PydanticUndefinedAnnotation / NameError）。这里按 endpoint 自身模块
+        # 解析一次签名再挂到 wrapper 上，保证装饰行为不影响路由解析。
+        try:
+            wrapper.__signature__ = inspect.signature(func, eval_str=True)
+        except Exception:  # noqa: BLE001 - 解析失败时保持原行为
+            logger.debug("audit signature eval skipped %s", func.__name__)
+
         return wrapper
 
     return decorator
@@ -383,4 +409,4 @@ class AuditMiddleware(BaseHTTPMiddleware):
         return response
 
 
-__all__ = ["AuditMiddleware", "audit_action"]
+__all__ = ["AuditMiddleware", "SENSITIVE_MODULES", "audit_action"]

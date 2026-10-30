@@ -358,16 +358,16 @@ onMounted(() => {
 <style scoped>
 .categories-page {
   min-height: 100vh;
-  background: #f0f0f0;
+  background: var(--pim-page);
   padding: 24px;
   box-sizing: border-box;
 }
 
 .categories-page :deep(.el-card) {
-  background: rgba(255, 255, 255, 0.68);
+  background: var(--pim-glass);
   border-radius: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 4px 32px rgba(30, 50, 90, 0.06);
+  border: 1px solid var(--pim-surface-border);
+  box-shadow: 0 4px 32px rgba(var(--pim-brand), 0.06);
 }
 
 .categories-page :deep(.el-card__body) {
@@ -392,13 +392,13 @@ onMounted(() => {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
-  color: rgb(30, 50, 90);
+  color: rgb(var(--pim-brand));
   letter-spacing: 0.3px;
 }
 
 .toolbar-title p {
   margin: 0;
-  color: rgba(30, 50, 90, 0.52);
+  color: rgba(var(--pim-brand), 0.52);
   font-size: 13px;
 }
 
@@ -429,9 +429,9 @@ onMounted(() => {
   gap: 16px;
   padding: 18px;
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(30, 50, 90, 0.06);
-  box-shadow: 0 4px 24px rgba(30, 50, 90, 0.05);
+  background: var(--pim-surface);
+  border: 1px solid rgba(var(--pim-brand), 0.06);
+  box-shadow: 0 4px 24px rgba(var(--pim-brand), 0.05);
 }
 
 .category-card-header {
@@ -452,7 +452,7 @@ onMounted(() => {
 .category-name,
 .child-name {
   font-weight: 600;
-  color: rgba(30, 50, 90, 0.92);
+  color: rgba(var(--pim-brand), 0.92);
 }
 
 .category-name {
@@ -477,27 +477,27 @@ onMounted(() => {
   min-height: 0;
   border: 0;
   background: transparent;
-  color: rgba(30, 50, 90, 0.78);
+  color: rgba(var(--pim-brand), 0.78);
   font-weight: 500;
 }
 
 .action-link:hover {
-  color: rgba(30, 50, 90, 0.98);
+  color: rgba(var(--pim-brand), 0.98);
   background: transparent;
 }
 
 .action-link.danger {
-  color: #f56c6c;
+  color: var(--pim-danger-bright);
 }
 
 .action-link.danger:hover {
-  color: #d94b4b;
+  color: var(--pim-danger-deep);
 }
 
 .category-meta,
 .child-meta {
   margin: 6px 0 0;
-  color: rgba(30, 50, 90, 0.52);
+  color: rgba(var(--pim-brand), 0.52);
   font-size: 13px;
 }
 
@@ -512,8 +512,8 @@ onMounted(() => {
   gap: 10px;
   padding: 14px 16px;
   border-radius: 18px;
-  background: rgba(30, 50, 90, 0.03);
-  border: 1px solid rgba(30, 50, 90, 0.05);
+  background: rgba(var(--pim-brand), 0.03);
+  border: 1px solid rgba(var(--pim-brand), 0.05);
 }
 
 .child-main {
@@ -535,9 +535,9 @@ onMounted(() => {
   gap: 8px;
   padding: 8px 12px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(30, 50, 90, 0.06);
-  color: rgba(30, 50, 90, 0.82);
+  background: var(--pim-glass);
+  border: 1px solid rgba(var(--pim-brand), 0.06);
+  color: rgba(var(--pim-brand), 0.82);
   font-size: 13px;
 }
 
@@ -549,7 +549,7 @@ onMounted(() => {
 }
 
 .grand-sort {
-  color: rgba(30, 50, 90, 0.45);
+  color: rgba(var(--pim-brand), 0.45);
   font-family: monospace;
 }
 

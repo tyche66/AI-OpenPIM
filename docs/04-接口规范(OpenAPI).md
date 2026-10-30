@@ -521,7 +521,7 @@ POST /api/v1/products/import?skipIfExists=false
 > `multipart/form-data`，字段 `file`；需 `product:import` 权限。上传形态二选一：
 >
 > - **`.xlsx` / `.xlsm`**：表格里贴着的图片也会被识别 —— WPS 的「嵌入单元格」（`DISPIMG`）、Excel 365 的「置于单元格内」（richValue）、压在某一行上的浮动图片，按图片落在哪一列决定归属；
-> - **`.zip`**：一个表格 + 一批图片文件。格里写图片文件名即可，或者干脆不写 —— 文件名以产品编号开头的图（`SUNON-001.jpg`、`SUNON-001_2.jpg`）自动归到该行，名字里带「场景 / scene / 效果图 / 实景」的进场景图。
+> - **`.zip`**：一个表格 + 一批图片文件。格里写图片文件名即可，或者干脆不写 —— 文件名以产品编号开头的图（`PILOT-001.jpg`、`PILOT-001_2.jpg`）自动归到该行，名字里带「场景 / scene / 效果图 / 实景」的进场景图。
 >
 > 图片列为 `主图`（第一张设为封面）、`产品图`、`场景图`。第三种给法「格里写 `http(s)` 直链」默认关闭（服务端替用户抓任意地址即 SSRF），要开由管理员置 `PRODUCT_IMPORT_ALLOW_URL_FETCH=true`，开启后每一跳都校验解析出的 IP 必须是公网地址。
 >

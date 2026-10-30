@@ -198,42 +198,106 @@
     <el-dialog
       v-model="showCreateDialog"
       title="新增方案"
-      class="glass-dialog"
+      class="glass-dialog proposal-form-dialog"
       append-to-body
       lock-scroll
       :close-on-click-modal="false"
-      width="640px"
+      width="920px"
     >
       <el-form
         ref="createFormRef"
         :model="createForm"
         :rules="createFormRules"
-        label-width="100px"
+        label-width="88px"
+        label-position="top"
       >
-        <el-form-item
-          label="方案名称"
-          prop="proposal_name"
-        >
-          <el-input
-            v-model="createForm.proposal_name"
-            placeholder="请输入方案名称"
-            class="capsule-input"
-          />
-        </el-form-item>
-        <el-form-item
-          label="客户名称"
-          prop="customer_name"
-        >
-          <el-input
-            v-model="createForm.customer_name"
-            placeholder="请输入客户名称"
-            class="capsule-input"
-          />
-        </el-form-item>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item
+              label="方案名称"
+              prop="proposal_name"
+            >
+              <el-input
+                v-model="createForm.proposal_name"
+                placeholder="请输入方案名称"
+                class="capsule-input"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item
+              label="客户名称"
+              prop="customer_name"
+            >
+              <el-input
+                v-model="createForm.customer_name"
+                placeholder="请输入客户名称"
+                class="capsule-input"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="关联客户">
+              <el-select
+                v-model="createForm.customer_id"
+                filterable
+                remote
+                clearable
+                reserve-keyword
+                placeholder="可选：关联客户档案"
+                :remote-method="searchCustomers"
+                :loading="customerLoading"
+                class="capsule-select full-width"
+              >
+                <el-option
+                  v-for="c in customerOptions"
+                  :key="c.id"
+                  :label="c.name"
+                  :value="c.id"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="关联项目">
+              <el-select
+                v-model="createForm.project_id"
+                filterable
+                clearable
+                placeholder="可选：关联项目并绑定空间编号"
+                class="capsule-select full-width"
+              >
+                <el-option
+                  v-for="p in projectOptions"
+                  :key="p.id"
+                  :label="p.name"
+                  :value="p.id"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-form-item
           label="商品明细"
+          class="items-form-item"
+          label-width="0"
         >
-          <ProposalItemEditor v-model="createForm.items" />
+          <ProposalItemEditor
+            v-model="createForm.items"
+            compact
+          />
+        </el-form-item>
+        <el-form-item
+          label="方案平面图"
+          class="floor-plan-form-item"
+          label-width="0"
+        >
+          <ProposalFloorPlanManager
+            v-model="createForm.floor_plans"
+            compact
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -333,10 +397,14 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
 import { proposalApi, shareApi } from '@/api'
+import { proposalFloorPlanApi } from '@/api/proposalFloorPlans'
+import { customerApi } from '@/api/customer'
+import { projectApi } from '@/api/project'
 import { useAuthStore } from '@/stores/auth'
 import { hasPermission } from '@/types/permissions'
-import type { Proposal, ProposalItem, ShareCreateRequest, ShareForm, ProposalToken } from '@/types/sales'
+import type { Proposal, ProposalItem, FloorPlanDraft, ShareCreateRequest, ShareForm, ProposalToken } from '@/types/sales'
 import ProposalItemEditor from '@/components/ProposalItemEditor.vue'
+import ProposalFloorPlanManager from '@/components/ProposalFloorPlanManager.vue'
 import ShareResultDialog from '@/components/ShareResultDialog.vue'
 
 const router = useRouter()
@@ -371,11 +439,51 @@ const queryParams = reactive({
 const createForm = reactive({
   proposal_name: '',
   customer_name: '',
+  customer_id: null as string | null,
+  project_id: null as string | null,
   items: [] as ProposalItem[],
+  // Track D：新增时先暂存平面图，方案创建成功后再一次性绑定
+  floor_plans: [] as FloorPlanDraft[],
 })
+// 客户/项目选项。方案明细的楼层/空间名称由业务员直接输入；
+// ProjectSpace API 仍保留给后台空间维护，不作为方案通用选项来源。
+const customerOptions = ref<Array<{ id: string; name: string }>>([])
+const projectOptions = ref<Array<{ id: string; name: string }>>([])
+const customerLoading = ref(false)
 
 const createFormRules: FormRules = {
   proposal_name: [{ required: true, message: '请输入方案名称', trigger: 'blur' }],
+}
+
+// ---------------------------------------------------------------------------
+// 客户/项目选项
+// ---------------------------------------------------------------------------
+
+async function searchCustomers() {
+  customerLoading.value = true
+  try {
+    const res = await customerApi.list({ page: 1, size: 20 })
+    customerOptions.value = (res.data?.list || []).map((c: { id: string; name: string }) => ({
+      id: c.id,
+      name: c.name,
+    }))
+  } catch {
+    customerOptions.value = []
+  } finally {
+    customerLoading.value = false
+  }
+}
+
+async function loadProjects() {
+  try {
+    const res = await projectApi.list({ page: 1, size: 100 })
+    projectOptions.value = (res.data?.list || []).map((p: { id: string; name: string }) => ({
+      id: p.id,
+      name: p.name,
+    }))
+  } catch {
+    projectOptions.value = []
+  }
 }
 
 const showShareDialog = ref(false)
@@ -466,52 +574,126 @@ const handleRevert = async (row: Proposal) => {
   }
 }
 
+function proposalCreateErrorMessage(error: unknown): string {
+  const responseData = (error as { response?: { data?: { detail?: unknown; msg?: unknown; message?: unknown } } })
+    ?.response?.data
+  const detail = responseData?.detail
+  if (typeof detail === 'string' && detail.trim()) return `创建失败：${detail}`
+  if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
+    const message = (detail as { msg?: unknown }).msg
+    if (typeof message === 'string' && message.trim()) return `创建失败：${message}`
+  }
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') return ''
+        const validation = entry as { loc?: unknown[]; msg?: unknown }
+        const field = Array.isArray(validation.loc) ? validation.loc.slice(1).join('.') : ''
+        const message = typeof validation.msg === 'string' ? validation.msg : ''
+        return [field, message].filter(Boolean).join('：')
+      })
+      .filter(Boolean)
+    if (messages.length) return `创建失败：${messages.join('；')}`
+  }
+  for (const message of [responseData?.message, responseData?.msg]) {
+    if (typeof message === 'string' && message.trim()) return `创建失败：${message}`
+  }
+  const networkMessage = (error as { message?: unknown })?.message
+  if (!responseData && typeof networkMessage === 'string' && networkMessage.trim()) {
+    return `创建失败：${networkMessage}`
+  }
+  return '创建方案失败，请检查填写内容后重试'
+}
+
 const handleCreateSubmit = async () => {
-  if (!createFormRef.value) return
-  await createFormRef.value.validate(async (valid) => {
-    if (!valid) return
-    // Validate at least one item
+  if (createLoading.value) return
+  const form = createFormRef.value
+  if (!form) {
+    ElMessage.warning('方案表单尚未准备好，请稍后重试')
+    return
+  }
+
+  createLoading.value = true
+  try {
+    const valid = await form.validate().catch(() => false)
+    if (!valid) {
+      ElMessage.warning('请填写方案名称等必填信息')
+      return
+    }
+    if (!createForm.proposal_name.trim()) {
+      ElMessage.warning('请输入方案名称')
+      return
+    }
     if (createForm.items.length === 0) {
       ElMessage.warning('请至少添加一项商品')
       return
     }
-    // Validate quantities are positive integers
     for (const item of createForm.items) {
+      if (typeof item.product_id !== 'string' || !item.product_id.trim()) {
+        ElMessage.warning('商品信息缺少有效产品 ID，请重新选择商品')
+        return
+      }
       if (!Number.isInteger(item.quantity) || item.quantity < 1) {
         ElMessage.warning(`商品 "${item.product_name || item.product_id}" 的数量必须为正整数`)
         return
       }
     }
+
     await authStore.ensureUser()
     const creatorId = authStore.userId
     if (!creatorId) {
       ElMessage.warning('用户信息尚未加载，请稍后重试')
       return
     }
-    createLoading.value = true
-    try {
-      await proposalApi.create({
-        proposal_name: createForm.proposal_name,
-        customer_name: createForm.customer_name,
-        creator_id: creatorId,
-        items: createForm.items.map((item) => ({
-          product_id: item.product_id,
-          quantity: item.quantity,
-          remark: item.remark,
-        })),
-      })
-      ElMessage.success('创建成功')
-      showCreateDialog.value = false
-      createForm.proposal_name = ''
-      createForm.customer_name = ''
-      createForm.items = []
-      fetchProposals()
-    } catch {
-      // error handled by interceptor
-    } finally {
-      createLoading.value = false
+
+    const created = await proposalApi.create({
+      proposal_name: createForm.proposal_name.trim(),
+      customer_name: createForm.customer_name.trim() || null,
+      customer_id: createForm.customer_id || undefined,
+      project_id: createForm.project_id || undefined,
+      creator_id: creatorId,
+      items: createForm.items.map((item) => ({
+        product_id: item.product_id.trim(),
+        quantity: item.quantity,
+        remark: item.remark?.trim() || undefined,
+        project_space_id: item.project_space_id || undefined,
+        floor_label: item.floor_label?.trim() || undefined,
+        space_label: item.space_label?.trim() || undefined,
+        material_desc: item.material_desc?.trim() || undefined,
+      })),
+    }, { suppressErrorMessage: true })
+
+    // 平面图是附加物料：绑定失败不回滚已创建的方案，但要明确告知去哪里补
+    if (createForm.floor_plans.length && created?.data?.id) {
+      try {
+        await proposalFloorPlanApi.batchCreate(
+          created.data.id,
+          createForm.floor_plans.map((plan, index) => ({
+            attachment_id: plan.attachment_id,
+            name: plan.name,
+            sort: index,
+          })),
+        )
+      } catch {
+        ElMessage.warning('方案已创建，但平面图绑定失败，请到方案详情页重新添加')
+      }
     }
-  })
+
+    ElMessage.success('创建成功')
+    showCreateDialog.value = false
+    createForm.proposal_name = ''
+    createForm.customer_name = ''
+    createForm.customer_id = null
+    createForm.project_id = null
+    createForm.items = []
+    createForm.floor_plans = []
+    queryParams.page = 1
+    await fetchProposals()
+  } catch (error) {
+    ElMessage.error(proposalCreateErrorMessage(error))
+  } finally {
+    createLoading.value = false
+  }
 }
 
 const handleShareSubmit = async () => {
@@ -586,25 +768,30 @@ watch(
   { immediate: true },
 )
 
-onMounted(fetchProposals)
+onMounted(() => {
+  fetchProposals()
+  loadProjects()
+})
 </script>
 
 <style scoped>
 /* ===== CSS Variables ===== */
 .proposals-page {
-  --brand-deep: rgba(30, 50, 90, 0.92);
-  --brand-primary: rgba(30, 50, 90, 0.85);
-  --brand-light: rgba(30, 50, 90, 0.08);
-  --brand-lighter: rgba(30, 50, 90, 0.04);
-  --text-primary: #5E6470;
-  --text-secondary: rgba(30, 50, 90, 0.6);
-  --bg-mist: #f0f0f0;
-  --glass-bg: rgba(255, 255, 255, 0.72);
-  --glass-border: rgba(255, 255, 255, 0.5);
-  --radius-lg: 28px;
-  --radius-md: 18px;
+  /* 以下别名全部指向 design-system.css 的全局语义 Token：
+     浅色保持原值，深色随 .dark-mode 自动切换，本文件不再需要深色覆盖块 */
+  --brand-deep: var(--pim-text-strong);
+  --brand-primary: var(--pim-text-strong);
+  --brand-light: rgba(var(--pim-brand), 0.08);
+  --brand-lighter: rgba(var(--pim-brand), 0.04);
+  --text-primary: var(--pim-text-primary);
+  --text-secondary: var(--pim-text-secondary);
+  --bg-mist: var(--pim-page);
+  --glass-bg: var(--pim-surface);
+  --glass-border: var(--pim-card-border);
+  --radius-lg: var(--pim-radius);
+  --radius-md: var(--pim-radius-sm);
   --radius-sm: 12px;
-  --shadow-soft: 0 4px 24px rgba(30, 50, 90, 0.06);
+  --shadow-soft: 0 4px 24px rgba(var(--pim-brand), 0.06);
   --transition-fast: 200ms cubic-bezier(0.4, 0, 0.2, 1);
   padding: 16px;
   min-height: 100vh;
@@ -622,7 +809,7 @@ onMounted(fetchProposals)
 
 .glass-card :deep(.el-card__header) {
   background: transparent;
-  border-bottom: 1px solid rgba(30, 50, 90, 0.06);
+  border-bottom: 1px solid rgba(var(--pim-brand), 0.06);
   padding: 20px 24px;
 }
 
@@ -668,19 +855,19 @@ onMounted(fetchProposals)
 /* ===== Capsule Components ===== */
 .capsule-input :deep(.el-input__wrapper) {
   border-radius: 20px;
-  box-shadow: 0 0 0 1px rgba(30, 50, 90, 0.1) inset;
+  box-shadow: 0 0 0 1px rgba(var(--pim-brand), 0.1) inset;
   padding: 4px 16px;
   transition: var(--transition-fast);
 }
 
 .capsule-input :deep(.el-input__wrapper):hover {
-  box-shadow: 0 0 0 1px rgba(30, 50, 90, 0.25) inset;
+  box-shadow: 0 0 0 1px rgba(var(--pim-brand), 0.25) inset;
 }
 
 .capsule-select :deep(.el-select__wrapper),
 .capsule-select :deep(.el-input__wrapper) {
   border-radius: 20px;
-  box-shadow: 0 0 0 1px rgba(30, 50, 90, 0.1) inset;
+  box-shadow: 0 0 0 1px rgba(var(--pim-brand), 0.1) inset;
   padding: 4px 16px;
 }
 
@@ -756,7 +943,7 @@ onMounted(fetchProposals)
 
 .more-trigger:hover {
   color: var(--brand-deep);
-  background: rgba(30, 50, 90, 0.06);
+  background: rgba(var(--pim-brand), 0.06);
 }
 
 .flat-action-menu {
@@ -771,17 +958,17 @@ onMounted(fetchProposals)
 }
 
 .flat-action-menu :deep(.el-dropdown-menu__item:hover) {
-  background: rgba(30, 50, 90, 0.06);
+  background: rgba(var(--pim-brand), 0.06);
   color: var(--brand-deep);
 }
 
 .dropdown-item-danger {
-  color: #f56c6c;
+  color: var(--pim-danger-bright);
 }
 
 .dropdown-item-danger:hover {
-  background: #fef0f0;
-  color: #f56c6c;
+  background: var(--pim-danger-bg);
+  color: var(--pim-danger-bright);
 }
 
 .capsule-tag {
@@ -833,8 +1020,8 @@ onMounted(fetchProposals)
 
 .pagination-wrap :deep(.el-pager li.active),
 .pagination-wrap :deep(.el-pager li.active:hover) {
-  background: var(--brand-primary);
-  color: #fff;
+  background: var(--pim-accent-solid);
+  color: var(--pim-on-accent);
 }
 
 .pagination-wrap :deep(.el-pager li:hover:not(.active)),
@@ -847,14 +1034,14 @@ onMounted(fetchProposals)
 .glass-dialog :deep(.el-dialog) {
   border-radius: var(--radius-lg) !important;
   overflow: hidden;
-  box-shadow: 0 20px 60px rgba(30, 50, 90, 0.15);
+  box-shadow: 0 20px 60px rgba(var(--pim-brand), 0.15);
 }
 
 .glass-dialog :deep(.el-dialog__header) {
-  background: linear-gradient(135deg, rgba(30, 50, 90, 0.06), rgba(30, 50, 90, 0.02));
+  background: linear-gradient(135deg, rgba(var(--pim-brand), 0.06), rgba(var(--pim-brand), 0.02));
   padding: 20px 24px 16px;
   margin-right: 0;
-  border-bottom: 1px solid rgba(30, 50, 90, 0.06);
+  border-bottom: 1px solid rgba(var(--pim-brand), 0.06);
 }
 
 .glass-dialog :deep(.el-dialog__title) {
@@ -873,6 +1060,21 @@ onMounted(fetchProposals)
 
 .full-width {
   width: 100%;
+}
+
+/* 「新增方案」弹窗：两列栅格 + 明细块占满整行，避免字段互相挤压 */
+.proposal-form-dialog :deep(.el-form-item) {
+  margin-bottom: 14px;
+}
+
+.proposal-form-dialog :deep(.el-form-item__label) {
+  padding-bottom: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.proposal-form-dialog :deep(.items-form-item > .el-form-item__content) {
+  display: block;
 }
 
 /* ===== Share ===== */
@@ -956,6 +1158,11 @@ onMounted(fetchProposals)
     width: 95vw !important;
     max-width: 95vw;
     margin: 8px auto;
+  }
+
+  .proposal-form-dialog :deep(.el-dialog__body) {
+    max-height: 82vh;
+    overflow-y: auto;
   }
 
   .glass-dialog :deep(.el-dialog__body) {

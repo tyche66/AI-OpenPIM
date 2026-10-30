@@ -424,14 +424,14 @@ async function unbind(sceneImageId: string) {
   aspect-ratio: 1;
   border-radius: 12px;
   overflow: hidden;
-  border: 2px solid rgba(30, 50, 90, 0.08);
-  background: #fff;
+  border: 2px solid rgba(var(--pim-brand), 0.08);
+  background: var(--pim-media-bg);
   position: relative;
   transition: border-color 0.2s;
 }
 
 .image-card:hover {
-  border-color: rgba(30, 50, 90, 0.2);
+  border-color: rgba(var(--pim-brand), 0.2);
 }
 
 .image-card-inner {
@@ -455,7 +455,7 @@ async function unbind(sceneImageId: string) {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  background: #fff;
+  background: var(--pim-media-bg);
 }
 
 .thumb-error {
@@ -477,7 +477,7 @@ async function unbind(sceneImageId: string) {
   justify-content: center;
   gap: 4px;
   padding: 4px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--pim-media-control-bg);
   backdrop-filter: blur(4px);
   opacity: 0;
   transition: opacity 0.2s;
@@ -557,7 +557,7 @@ async function unbind(sceneImageId: string) {
   overflow: hidden;
   cursor: pointer;
   transition: all 0.2s;
-  background: #fff;
+  background: var(--pim-media-bg);
 }
 
 .selector-card:hover {
@@ -623,7 +623,7 @@ async function unbind(sceneImageId: string) {
   gap: 2px;
   padding: 2px 6px;
   background: var(--el-color-success);
-  color: #fff;
+  color: var(--pim-on-accent);
   font-size: 11px;
   border-radius: 10px;
 }

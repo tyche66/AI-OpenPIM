@@ -16,7 +16,7 @@ services:
     build:
       context: ./backend
       args:
-        APP_VERSION: ${APP_VERSION:-dev}
+        APP_VERSION: ${APP_VERSION:-1.9.4}
         BUILD_ID: ${BUILD_ID:-dev-local}
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
         BUILD_TIME: ${BUILD_TIME:-unknown}
@@ -29,7 +29,7 @@ services:
       - DB_POOL_SIZE=${DB_POOL_SIZE:-10}
       - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-10}
       - UVICORN_WORKERS=${UVICORN_WORKERS:-2}
-      - APP_VERSION=${APP_VERSION:-dev}
+      - APP_VERSION=${APP_VERSION:-1.9.3}
       - BUILD_ID=${BUILD_ID:-dev-local}
       - GIT_COMMIT=${GIT_COMMIT:-unknown}
       - BUILD_TIME=${BUILD_TIME:-unknown}
@@ -58,6 +58,14 @@ services:
       - AI_EMBEDDING_CACHE_MAX_ITEMS=${AI_EMBEDDING_CACHE_MAX_ITEMS:-10000}
       - AI_TIMEOUT=${AI_TIMEOUT:-30}
       - AI_TOOL_PLANNING_TIMEOUT=${AI_TOOL_PLANNING_TIMEOUT:-8}
+      - CONTENT_AI_API_URL=${CONTENT_AI_API_URL:-https://api.example.com/v1}
+      - CONTENT_AI_API_KEY=${CONTENT_AI_API_KEY:-}
+      - CONTENT_AI_API_KEY_FILE=${CONTENT_AI_API_KEY_FILE:-}
+      - CONTENT_AI_CHAT_MODEL=${CONTENT_AI_CHAT_MODEL:-gpt-4o-mini}
+      - CONTENT_AI_CHAT_MODELS=${CONTENT_AI_CHAT_MODELS:-gpt-4o-mini}
+      - CONTENT_AI_TIMEOUT=${CONTENT_AI_TIMEOUT:-180}
+      - CONTENT_AI_ROUTE_TIMEOUT=${CONTENT_AI_ROUTE_TIMEOUT:-3}
+      - CONTENT_AI_MAX_RETRIES=${CONTENT_AI_MAX_RETRIES:-0}
       - KNOWLEDGE_GATEWAY_ENABLED=${KNOWLEDGE_GATEWAY_ENABLED:-1}
       - AI_RATE_LIMIT=${AI_RATE_LIMIT:-10}
       - AI_RATE_LIMIT_WINDOW=${AI_RATE_LIMIT_WINDOW:-60}
@@ -66,6 +74,13 @@ services:
       - OCR_TIMEOUT=${OCR_TIMEOUT:-300}
       - BACKUP_DIR=${BACKUP_DIR:-/data/backups}
     volumes:
+      # Optional content AI key file; an absent setting binds /dev/null only.
+      - type: bind
+        source: ${CONTENT_AI_API_KEY_FILE:-/dev/null}
+        target: ${CONTENT_AI_API_KEY_FILE:-/dev/null}
+        read_only: true
+        bind:
+          create_host_path: false
       # Read-only mount of the host backups directory so /health/ready and
       # /ops/status can report free bytes + capacity alert. The container
       # NEVER writes backup state here — backup scripts run on the host.
@@ -155,8 +170,8 @@ services:
 
 volumes:
   postgres_pg16_data:
-    name: richangpim_go_postgres_pg16_data_20260716
+    name: openpim_go_postgres_pg16_data_20260716
   redis_data:
-    name: richangpim_go_redis_data_20260716
+    name: openpim_go_redis_data_20260716
   minio_data:
-    name: richangpim_go_minio_data_20260716
+    name: openpim_go_minio_data_20260716

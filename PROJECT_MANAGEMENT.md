@@ -2,7 +2,7 @@
 
 ## 项目概览
 
-- **项目名称**: OpenPIM (日常PIM)
+- **项目名称**: OpenPIM (OpenPIM)
 - **项目类型**: AI 驱动的企业级产品信息管理平台
 - **技术栈**: Vue3 + FastAPI + PostgreSQL + Redis + MinIO
 - **构建方式**: Docker Compose 容器化
@@ -24,7 +24,7 @@
 ### V1.1 - 内部试点首发 ✅ GO
 
 - 25/25 production regression PASS（详见 docs/v1.1-verification.md）
-- 13 条铭达试点产品 + 待核价占位 + OCR 解析状态 + 字段级 RBAC + 备份脚本与恢复演练
+- 13 条pilot试点产品 + 待核价占位 + OCR 解析状态 + 字段级 RBAC + 备份脚本与恢复演练
 - AI/OCR 默认 fail-closed (AI_ADAPTER=none / OCR_ADAPTER=none)
 
 ### V1.2 - 内部试点运营加固 ✅ GO
@@ -44,7 +44,7 @@
 
 **交付内容**:
 - Knowledge Gateway 正式上线（`POST /api/v1/knowledge/query` + SSE 流式协议）
-- RuleBasedPlanner 支持中文实体提取（铭达、办公桌等）+ 价格排序意图识别
+- RuleBasedPlanner 支持中文实体提取（pilot、办公桌等）+ 价格排序意图识别
 - 只读产品搜索/比较/质量查询工具 + 供应商比较工具
 - 混合检索（pgvector + 关键词）
 - 角色级字段投射（销售/viewer 隐藏成本价等敏感字段）
@@ -130,7 +130,7 @@
 | Frontend tests | `npm run test` | 36 passed |
 | Frontend build | `npm run build` | PASS，产物在 `frontend/dist` |
 | Compose config | `docker compose -f docker-compose.yml config --quiet` | PASS，仅 `version` obsolete warning |
-| Backend image | `docker compose build backend` | PASS，`richangpim-backend:latest` |
+| Backend image | `docker compose build backend` | PASS，`openpim-backend:latest` |
 | Compose runtime | `docker compose up -d postgres redis minio gotenberg backend nginx` | PASS，六服务全部健康 |
 | Runtime frontend | `curl -I http://localhost/` | PASS，200 |
 | Runtime H5 SPA | `curl -I http://localhost/share/test-token` | PASS，200 |

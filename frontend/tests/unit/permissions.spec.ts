@@ -8,8 +8,8 @@ import {
 } from '@/types/permissions'
 
 describe('PERMISSIONS constant', () => {
-  it('contains exactly 57 permission codes', () => {
-    expect(PERMISSIONS).toHaveLength(57)
+  it('contains exactly 74 permission codes', () => {
+    expect(PERMISSIONS).toHaveLength(75)
   })
 
   it('has no duplicate codes', () => {

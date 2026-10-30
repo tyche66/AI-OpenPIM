@@ -141,7 +141,7 @@ def test_a_plain_workbook_or_a_non_zip_upload_passes_straight_through():
     """xlsx 本身就是 zip，所以不能只看「是不是 zip」——里面有 xl/workbook.xml 的
     就是表格本体。.xls / 加密文件不是 zip，原样透传给 read_product_sheet 去报错，
     那边的话术（「文件解析失败」）对用户更有用。"""
-    book = _xlsx([["产品编号", "产品名称"], ["SUNON-001", "椅"]])
+    book = _xlsx([["产品编号", "产品名称"], ["PILOT-001", "椅"]])
 
     plain = load_bundle(book)
     assert (plain.xlsx, plain.files, plain.warnings) == (book, {}, [])
@@ -158,7 +158,7 @@ def test_zip_bundle_indexes_photos_by_basename_and_ignores_companion_files():
     """
     payload = _zip(
         {
-            "报价单.xlsx": _xlsx([["产品编号"], ["SUNON-001"]]),
+            "报价单.xlsx": _xlsx([["产品编号"], ["PILOT-001"]]),
             "图片/Chair-1.JPG": JPEG,
             "图片/chair-2.png": PNG,
             "__MACOSX/._Chair-1.JPG": b"junk",
@@ -231,23 +231,23 @@ def test_duplicate_basenames_in_a_zip_keep_the_first_and_say_so():
 
 
 def test_prefix_matching_stops_at_a_separator_so_neighbour_skus_stay_apart():
-    """``SUNON-001`` 不能把 ``SUNON-0012.jpg``（另一个产品）吃进来。
+    """``PILOT-001`` 不能把 ``PILOT-0012.jpg``（另一个产品）吃进来。
 
-    只挡 ASCII 字母数字，是为了让 ``SUNON-001场景.jpg`` 这种中文后缀还能归上 ——
+    只挡 ASCII 字母数字，是为了让 ``PILOT-001场景.jpg`` 这种中文后缀还能归上 ——
     用中文给图片起名的表比想象中多。
     """
     bundle = ImportBundle(
         xlsx=b"",
         files={
             name: BundleFile(name=name, data=PNG)
-            for name in ("sunon-001.jpg", "sunon-001_2.jpg", "sunon-001场景.jpg", "sunon-0012.jpg")
+            for name in ("pilot-001.jpg", "pilot-001_2.jpg", "pilot-001场景.jpg", "pilot-0012.jpg")
         },
     )
 
-    assert [f.name for f in bundle.match_prefix("SUNON-001")] == [
-        "sunon-001.jpg",
-        "sunon-001_2.jpg",
-        "sunon-001场景.jpg",
+    assert [f.name for f in bundle.match_prefix("PILOT-001")] == [
+        "pilot-001.jpg",
+        "pilot-001_2.jpg",
+        "pilot-001场景.jpg",
     ]
     assert bundle.match_prefix("") == []
 
@@ -303,7 +303,7 @@ def test_embedded_images_take_the_role_of_the_column_they_sit_in():
         ],
     )
 
-    media = resolver.resolve(sheet.rows[0], product_no="SUNON-001")
+    media = resolver.resolve(sheet.rows[0], product_no="PILOT-001")
 
     assert media.cover is not None
     assert (media.cover.data, media.cover.role) == (PNG, ROLE_MAIN)
@@ -316,7 +316,7 @@ def test_embedded_images_take_the_role_of_the_column_they_sit_in():
     assert media.sources == {"anchor"}
     assert media.warnings == []
     # 内嵌图没有文件名，用编号 + 次序补一个，素材库里才认得出是谁的图。
-    assert media.cover.name == "SUNON-001-2.png"
+    assert media.cover.name == "PILOT-001-2.png"
 
 
 def test_a_floating_image_spanning_columns_lands_on_the_image_column_it_covers():
@@ -410,37 +410,37 @@ def test_prefix_convention_only_applies_to_rows_that_named_nothing():
     """
     sheet = _sheet(
         {3: "images"},
-        {4: {"images": "SUNON-003-1.png"}, 5: {}, 6: {}},
+        {4: {"images": "PILOT-003-1.png"}, 5: {}, 6: {}},
     )
     bundle = load_bundle(
         _zip(
             {
                 "book.xlsx": _xlsx([["产品编号"], ["A"]]),
-                "SUNON-003-1.png": PNG,
-                "SUNON-002.jpg": JPEG,
-                "SUNON-002_2.jpg": PNG2,
-                "SUNON-002场景图.png": PNG3,
-                "SUNON-0021.jpg": WEBP,
+                "PILOT-003-1.png": PNG,
+                "PILOT-002.jpg": JPEG,
+                "PILOT-002_2.jpg": PNG2,
+                "PILOT-002场景图.png": PNG3,
+                "PILOT-0021.jpg": WEBP,
             }
         )
     )
     resolver = MediaResolver(sheet, bundle=bundle)
 
-    # 第 4 行明确写了一个「按前缀本该属于 SUNON-003」的文件名：以它写的为准。
-    named = resolver.resolve(sheet.rows[0], product_no="SUNON-001")
+    # 第 4 行明确写了一个「按前缀本该属于 PILOT-003」的文件名：以它写的为准。
+    named = resolver.resolve(sheet.rows[0], product_no="PILOT-001")
     assert [b.data for b in named.blobs] == [PNG]
     assert named.sources == {"zip"}
 
-    convention = resolver.resolve(sheet.rows[1], product_no="SUNON-002")
+    convention = resolver.resolve(sheet.rows[1], product_no="PILOT-002")
     assert convention.cover is not None and convention.cover.data == JPEG
     assert [b.data for b in convention.images] == [PNG2]
-    # 名字里带「场景」的走场景图；SUNON-0021 是另一个编号，不能被吃进来。
+    # 名字里带「场景」的走场景图；PILOT-0021 是另一个编号，不能被吃进来。
     assert [b.data for b in convention.scenes] == [PNG3]
     assert convention.sources == {"convention"}
 
-    # SUNON-003-1.png 已经被第 4 行显式引用，不能再按前缀归给 SUNON-003 ——
+    # PILOT-003-1.png 已经被第 4 行显式引用，不能再按前缀归给 PILOT-003 ——
     # 否则同一张图会同时挂到两个产品上。
-    other = resolver.resolve(sheet.rows[2], product_no="SUNON-003")
+    other = resolver.resolve(sheet.rows[2], product_no="PILOT-003")
     assert other.count == 0
 
 
@@ -686,9 +686,9 @@ def test_a_real_zip_of_a_workbook_and_photos_resolves_row_by_row():
         [
             ["某某家具 2026 年报价单", None, None, None],
             ["货号", "品名", "主图", "图片1"],
-            ["SUNON-001", "人体工学椅", "cover.jpg", "chair-1.png"],
+            ["PILOT-001", "人体工学椅", "cover.jpg", "chair-1.png"],
             [None, None, None, None],
-            ["SUNON-002", "办公桌", None, None],
+            ["PILOT-002", "办公桌", None, None],
         ]
     )
     bundle = load_bundle(
@@ -697,16 +697,16 @@ def test_a_real_zip_of_a_workbook_and_photos_resolves_row_by_row():
                 "报价单.xlsx": book,
                 "图片/cover.jpg": JPEG,
                 "图片/chair-1.png": PNG,
-                "图片/SUNON-002.png": PNG2,
-                "图片/SUNON-002场景.png": PNG3,
+                "图片/PILOT-002.png": PNG2,
+                "图片/PILOT-002场景.png": PNG3,
             }
         )
     )
 
     sheet = read_product_sheet(bundle.xlsx)
     resolver = MediaResolver(sheet, bundle=bundle)
-    first = resolver.resolve(sheet.rows[0], product_no="SUNON-001")
-    second = resolver.resolve(sheet.rows[1], product_no="SUNON-002")
+    first = resolver.resolve(sheet.rows[0], product_no="PILOT-001")
+    second = resolver.resolve(sheet.rows[1], product_no="PILOT-002")
 
     assert [r.excel_row for r in sheet.rows] == [3, 5]
     assert first.cover is not None and first.cover.data == JPEG
@@ -782,7 +782,7 @@ def test_a_member_that_cannot_be_read_only_costs_that_one_photo():
     压缩头声称 10 字节、实际解出 800 多字节：体积筛查按头放它进来了，坏在真读那一刻。
     """
     book = _xlsx(
-        [["产品编号", "产品名称", "主图", "图片1"], ["SUNON-001", "椅", "cover.jpg", "chair-1.png"]]
+        [["产品编号", "产品名称", "主图", "图片1"], ["PILOT-001", "椅", "cover.jpg", "chair-1.png"]]
     )
     payload = _lie_about_size(
         _zip({"报价单.xlsx": book, "cover.jpg": JPEG, "chair-1.png": PNG * 40}),
@@ -793,7 +793,7 @@ def test_a_member_that_cannot_be_read_only_costs_that_one_photo():
     assert sorted(bundle.files) == ["chair-1.png", "cover.jpg"]
 
     sheet = read_product_sheet(bundle.xlsx)
-    media = MediaResolver(sheet, bundle=bundle).resolve(sheet.rows[0], product_no="SUNON-001")
+    media = MediaResolver(sheet, bundle=bundle).resolve(sheet.rows[0], product_no="PILOT-001")
 
     assert media.cover is not None and media.cover.data == JPEG
     assert media.images == []

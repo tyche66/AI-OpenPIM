@@ -25,7 +25,10 @@
 
 | 包 | 版本 | 大小 | 说明 |
 | --- | --- | --- | --- |
-| `OpenPIM_v1.9.1_20260807_111932.tar.gz` | v1.9.1（`c299cb4`，tag `v1.9.1`） | 407,700,768 B | 当前包；sha256 `3d132907e197bc8574617d0fee36d51254328828d7414306428798586be7879d` |
+| `OpenPIM_v1.9.6_20261028_163336.tar.gz` | v1.9.6（`6d57749`，tag `v1.9.6`，已推送 origin） | 728434901 B | **当前包**；series 属性索引 + 语义检索兜底 + 查询历史 + AI 配置修复；sha256 `cb926249294fb1e7fbd3b0fed4d4ea0d72e2e3c3069570c178838a52e3a0a92a` |
+| `OpenPIM_v1.9.5_20261027_011808.tar.gz` | v1.9.5（`71cf779`，tag `v1.9.5`） | 558,183,957 B | 上一份全量包；sha256 `72a9a3c57441d5ce2a5b61643e06bd37d86fdc0c65e10f0bf1ae1f6521c16906` |
+| `OpenPIM_v1.9.4_20261026_041210.tar.gz` | v1.9.4（`66eebbc`，tag `v1.9.4`） | 558,043,920 B | 上一份全量包；sha256 `b4933552471678f64529769cfcb4786f4a089e61fb8ba7d8d04e1f5aad5109dd` |
+| `OpenPIM_v1.9.1_20260807_111932.tar.gz` | v1.9.1（`c299cb4`，tag `v1.9.1`） | 407,700,768 B | 上一份全量包；sha256 `3d132907e197bc8574617d0fee36d51254328828d7414306428798586be7879d` |
 | `OpenPIM_v1.9.0_20260731_215300.tar.gz` | v1.9.0（`9cd132c`，tag `v1.9.0`） | 240,369,356 B | 历史参考包。sha256 见同目录 `.sha256` 文件 |
 | `OpenPIM_v1.8.0_20260729_110810.tar.gz` | v1.8.0 | 239,131,745 B | 上一份，v1.9.0 包的结构参考 |
 
@@ -66,7 +69,7 @@ v1.9.0 包的 sha256：`cb4f9fc12b43040a219b0b50b6d09b8b11251558adddf3097bdbe9fe
 全程**不停、不重启、不修改任何服务**。数据库走 `docker exec pg_dump`，卷是热归档。
 
 ```bash
-cd /home/AI-PIM/OpenPIM
+cd /mnt/e/OpenPIM   # Windows 侧为 E:\OpenPIM
 export DOCKER_HOST=unix:///mnt/wsl/docker-desktop/shared-sockets/host-services/docker.proxy.sock
 export DOCKER_CONTEXT=default
 TS=$(date +%Y%m%d_%H%M%S)
@@ -99,17 +102,17 @@ tar -czf "$STAGE/source/OpenPIM_source_worktree.tar.gz" -C . \
 
 ```bash
 # 3) 数据库：只能用这一种写法（见「已知限制」）
-docker exec richangpim-postgres-1 pg_dump -U pim -d ai_pim -Fc -f /tmp/b.dump
-docker cp richangpim-postgres-1:/tmp/b.dump "$STAGE/data/db/ai_pim_${TS}.dump"
-docker exec richangpim-postgres-1 pg_dump -U pim -d ai_pim -f /tmp/b.sql
-docker cp richangpim-postgres-1:/tmp/b.sql "$STAGE/data/db/ai_pim_${TS}.sql"
-docker exec richangpim-postgres-1 rm -f /tmp/b.dump /tmp/b.sql
+docker exec openpim-postgres-1 pg_dump -U pim -d ai_pim -Fc -f /tmp/b.dump
+docker cp openpim-postgres-1:/tmp/b.dump "$STAGE/data/db/ai_pim_${TS}.dump"
+docker exec openpim-postgres-1 pg_dump -U pim -d ai_pim -f /tmp/b.sql
+docker cp openpim-postgres-1:/tmp/b.sql "$STAGE/data/db/ai_pim_${TS}.sql"
+docker exec openpim-postgres-1 rm -f /tmp/b.dump /tmp/b.sql
 ```
 ```bash
 # 4) 卷：把 tar 流从容器里 cat 出来，不要 bind mount 宿主目录
 #    （从 WSL 发行版里 -v /home/...:/backup 会被 Docker Desktop 当成 Windows 路径翻译）
 for V in postgres_pg16 minio redis; do
-  docker run --rm -v "richangpim_go_${V}_data_20260716:/volume:ro" alpine:3.20 \
+  docker run --rm -v "openpim_go_${V}_data_20260716:/volume:ro" alpine:3.20 \
     tar -czf - -C /volume . > "$STAGE/data/volumes/${V}_data_volume_${TS}.tar.gz"
 done
 ```
@@ -119,8 +122,8 @@ done
 docker ps > "$STAGE/docker-inspect/docker-ps.txt"
 docker volume ls > "$STAGE/docker-inspect/docker-volumes.txt"
 docker inspect $(docker ps -q) > "$STAGE/docker-inspect/containers.json"
-docker volume inspect richangpim_go_postgres_pg16_data_20260716 \
-  richangpim_go_minio_data_20260716 richangpim_go_redis_data_20260716 \
+docker volume inspect openpim_go_postgres_pg16_data_20260716 \
+  openpim_go_minio_data_20260716 openpim_go_redis_data_20260716 \
   > "$STAGE/docker-inspect/volumes.json"
 ```
 
@@ -173,7 +176,7 @@ sha256sum "${STAGE##*/}.tar.gz" | tee "${STAGE##*/}.tar.gz.sha256"
    卷归档只在逻辑备份不可用时用，恢复卷前必须停对应服务。
 5. **MinIO 必须恢复**，产品图片和 `derived/thumb/**` 缩略图都在里面；不恢复的话列表封面全空。
 6. 验收看四个入口：`:888/`、`:888/admin/`、`:888/share/<token>`、`:888/api/v1/health`
-   （`health` 的 `version` 必须是真版本号），再 `docker exec richangpim-backend-1 alembic current` 核迁移 head。
+   （`health` 的 `version` 必须是真版本号），再 `docker exec openpim-backend-1 alembic current` 核迁移 head。
    curl 记得 `--noproxy '*'`。
 
 ## 怎么校验
@@ -211,11 +214,11 @@ sha256sum -c OpenPIM_v1.9.0_20260731_215300.tar.gz.sha256
 
 1. **卷归档是热的。** 打包时没有停 Postgres/MinIO，`data/volumes/postgres_pg16_*.tar.gz`
    在事务边界上不保证一致，只能兜底。**权威数据源是 `data/db/*.dump`。**
-2. **卷名写死在包里**（`richangpim_go_*_data_20260716`，`docker-inspect/volumes.json` 有记录）。
+2. **卷名写死在包里**（`openpim_go_*_data_20260716`，`docker-inspect/volumes.json` 有记录）。
    目标环境卷名不同要改 `docker-compose.yml`，否则恢复到了一个没人用的卷上。
 3. **不要用 `scripts/db_backup.sh` 打这个包。** 它默认连 `localhost:5432/ai_pim`，
    而生产 Postgres 没发布端口；若本机恰好另有同名空库，它会**静默备份错的库并报成功**。
-   只用 `docker exec richangpim-postgres-1 pg_dump`。
+   只用 `docker exec openpim-postgres-1 pg_dump`。
 4. **包里没有镜像。** 恢复要重新 `docker compose build`，依赖能拉到 Docker Hub / npm / PyPI。
    完全离线的迁移需要另外 `docker save`（当前没做，包会再大几百 MB）。
 5. **`node_modules` 不在包里**，恢复需要 `npm ci`（`package-lock.json` 在源码包里，版本锁得住）。

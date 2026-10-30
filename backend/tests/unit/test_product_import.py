@@ -53,6 +53,7 @@ EXPORT_HEADERS: tuple[str, ...] = (
     "描述",
     "规格",
     "颜色",
+    "交货期",
     "数据来源",
     "完整度状态",
     "创建时间",
@@ -143,7 +144,7 @@ def test_cell_text_keeps_integer_product_numbers_intact():
     assert cell_text(float("nan")) == ""
     assert cell_text(None) == ""
     assert cell_text(pd.NA) == ""
-    assert cell_text("  SUNON-001  ") == "SUNON-001"
+    assert cell_text("  PILOT-001  ") == "PILOT-001"
     assert cell_text(datetime(2026, 8, 3, 10, 30, 5)) == "2026-08-03 10:30:05"
     assert cell_text(date(2026, 8, 3)) == "2026-08-03"
 
@@ -216,9 +217,9 @@ def test_header_row_is_found_below_a_title_row_and_row_numbers_stay_absolute():
             ["某某家具 2026 年报价单", None, None, None],
             [None, None, None, None],
             ["货号", "品名", "单价", "图片1"],
-            ["SUNON-001", "人体工学椅", "1,280", "chair-1.jpg"],
+            ["PILOT-001", "人体工学椅", "1,280", "chair-1.jpg"],
             [None, None, None, None],
-            ["SUNON-002", "办公桌", "待核价", None],
+            ["PILOT-002", "办公桌", "待核价", None],
         ]
     )
 
@@ -241,7 +242,7 @@ def test_repeated_image_columns_merge_and_duplicate_scalar_columns_are_dropped()
     payload = _xlsx(
         [
             ["产品编号", "产品名称", "主图", "图片1", "图片2", "产品名称", "单位", "备注"],
-            ["SUNON-001", "人体工学椅", "cover.jpg", "a.jpg", "b.jpg", "重复列", "把", "包安装"],
+            ["PILOT-001", "人体工学椅", "cover.jpg", "a.jpg", "b.jpg", "重复列", "把", "包安装"],
         ]
     )
 
@@ -271,7 +272,7 @@ def test_detect_header_row_keeps_the_earliest_of_equally_good_candidates():
     frame = pd.DataFrame(
         [
             ["产品编号", "产品名称", "面价"],
-            ["SUNON-001", "椅", "1280"],
+            ["PILOT-001", "椅", "1280"],
             ["产品编号", "产品名称", "面价"],
         ]
     )
@@ -285,12 +286,12 @@ def test_sheets_that_cannot_be_read_fail_loudly_instead_of_importing_garbage():
 
     # 表头在第 20 行（超出 16 行扫描窗口）：宁可退回，也不要把说明行当表头。
     deep = [[f"填写说明第 {i} 条", None] for i in range(19)]
-    deep += [["产品编号", "产品名称"], ["SUNON-001", "椅"]]
+    deep += [["产品编号", "产品名称"], ["PILOT-001", "椅"]]
     with pytest.raises(SheetError, match="未识别到表头行"):
         read_product_sheet(_xlsx(deep))
 
     with pytest.raises(SheetError, match="缺少必填列"):
-        read_product_sheet(_xlsx([["产品编号", "面价"], ["SUNON-001", "1280"]]))
+        read_product_sheet(_xlsx([["产品编号", "面价"], ["PILOT-001", "1280"]]))
 
     with pytest.raises(SheetError, match="文件解析失败"):
         read_product_sheet(b"\xd0\xcf\x11\xe0not-an-xlsx")
@@ -300,7 +301,7 @@ def test_parse_row_maps_a_complete_row_and_normalises_enums_and_tags():
     row = ProductRow(
         excel_row=7,
         values={
-            "product_no": "SUNON-001",
+            "product_no": "PILOT-001",
             "product_name": "人体工学椅",
             "brand_name": "示例品牌",
             "supplier_name": "示例供应商",
@@ -310,6 +311,7 @@ def test_parse_row_maps_a_complete_row_and_normalises_enums_and_tags():
             "material": "网布+铝合金",
             "specification": "W650×D620×H1150mm",
             "colors": "黑色,灰色",
+            "delivery_period": "现货",
             "description": "示例描述",
             "data_source": "2026 供应商报价表",
             "stock_status": "有货",
@@ -321,7 +323,7 @@ def test_parse_row_maps_a_complete_row_and_normalises_enums_and_tags():
     fields = parse_row(row)
 
     assert fields.ok
-    assert (fields.excel_row, fields.product_no) == (7, "SUNON-001")
+    assert (fields.excel_row, fields.product_no) == (7, "PILOT-001")
     assert (fields.face_price, fields.cost_price) == (1280.0, 860.0)
     assert (fields.stock_status, fields.status) == ("in_stock", "active")
     assert fields.completeness_status == "complete"
@@ -329,6 +331,7 @@ def test_parse_row_maps_a_complete_row_and_normalises_enums_and_tags():
     # 这四列老代码从来没导进去过（只认 no/name/price），是这次要补的。
     assert (fields.description, fields.specification) == ("示例描述", "W650×D620×H1150mm")
     assert (fields.colors, fields.data_source) == ("黑色,灰色", "2026 供应商报价表")
+    assert fields.delivery_period == "现货"
     assert fields.notes == []
 
 
@@ -375,7 +378,7 @@ def test_only_unusable_rows_fail_while_the_rest_degrade_with_notes():
         ProductRow(
             excel_row=10,
             values={
-                "product_no": "SUNON-001",
+                "product_no": "PILOT-001",
                 "product_name": "椅",
                 "face_price": "1280",
                 "cost_price": "面议",
@@ -419,7 +422,7 @@ def test_import_template_can_be_read_back_by_this_parser():
     fields = parse_row(sheet.rows[0])
 
     assert (fields.ok, fields.notes) == (True, [])
-    assert (fields.product_no, fields.face_price) == ("SUNON-001", 1280.0)
+    assert (fields.product_no, fields.face_price) == ("PILOT-001", 1280.0)
     assert (fields.stock_status, fields.status) == ("in_stock", "draft")
     assert fields.tag_names == ["热销", "新品"]
     # 说明页也得在：三种给图方式全靠它讲清楚。

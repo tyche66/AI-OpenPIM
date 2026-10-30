@@ -22,6 +22,7 @@ import pandas as pd
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import func, select
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.product import (
@@ -30,8 +31,10 @@ from app.models.product import (
     Category,
     Product,
     ProductImage,
+    ProductTag,
     SceneImage,
     Supplier,
+    Tag,
     product_scene_image,
 )
 
@@ -399,4 +402,758 @@ async def test_skip_if_exists_reports_the_row_as_skipped(
     assert third["failures"][0]["reason"] == "产品编号已存在"
 
     # 三次下来库里始终只有一条产品。
+    assert await _count(db, Product) == 1
+
+
+# ---------------------------------------------------------------------------
+# 重传产品包：preflight -> commit（覆盖 / 追加 / 跳过）
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _isolated_staging(tmp_path, monkeypatch):
+    """预检暂存落到每个用例自己的临时目录，用例之间不共享 token。"""
+    from app.core.config import settings
+
+    monkeypatch.setattr(
+        settings, "PRODUCT_IMPORT_STAGING_DIR", str(tmp_path / "import_staging")
+    )
+
+
+async def _post_preflight(
+    client: AsyncClient, headers: dict, payload: bytes, *, name: str = "products.xlsx"
+) -> dict:
+    resp = await client.post(
+        "/api/v1/products/import/preflight",
+        files={"file": (name, payload, "application/octet-stream")},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["code"] == 200
+    return body["data"]
+
+
+async def _post_commit(
+    client: AsyncClient,
+    headers: dict,
+    token: str,
+    mode: str,
+    *,
+    backup: bool = True,
+    new_tag_type: str = "series",
+    alias_action: str | None = None,
+    alias_decisions: list[dict] | None = None,
+):
+    payload: dict = {
+        "token": token,
+        "mode": mode,
+        "backup": backup,
+        "new_tag_type": new_tag_type,
+    }
+    if alias_action is not None:
+        payload["alias_action"] = alias_action
+    if alias_decisions is not None:
+        payload["alias_decisions"] = alias_decisions
+    return await client.post(
+        "/api/v1/products/import/commit", json=payload, headers=headers
+    )
+
+
+@pytest.mark.anyio
+async def test_preflight_counts_then_skip_mode_changes_nothing(
+    client: AsyncClient, db: AsyncSession, minio: FakeMinio
+):
+    """预检只读不写；skip 模式只导入新增，已存在的产品一个字段都不动。"""
+    headers = await _login_admin(client)
+    master = await _seed_master(db)
+    existing_no = f"IMP-{uuid4().hex[:6].upper()}"
+    new_no = f"IMP-{uuid4().hex[:6].upper()}"
+
+    def _row(no: str, name: str, price: str) -> dict:
+        return {
+            "产品编号*": no,
+            "产品名称*": name,
+            "面价*": price,
+            "品牌": master["品牌"],
+            "供应商": master["供应商"],
+            "分类": master["分类"],
+            "状态": "上架",
+        }
+
+    first = await _post_import(
+        client, headers, _sheet_bytes([_row(existing_no, "老产品", "760")]), name="a.xlsx"
+    )
+    assert first["created_count"] == 1
+
+    before = (
+        await db.execute(select(Product).where(Product.product_no == existing_no))
+    ).scalar_one()
+    before_id, before_price, before_status = before.id, before.face_price, before.status
+
+    sheet = _sheet_bytes(
+        [
+            _row(existing_no, "改个名字", "999"),
+            _row(new_no, "新产品", "1200"),
+        ]
+    )
+    preflight = await _post_preflight(client, headers, sheet)
+    assert preflight["total_rows"] == 2
+    assert preflight["new_count"] == 1
+    assert preflight["existing_count"] == 1
+    assert preflight["invalid_count"] == 0
+    assert preflight["conflicts"][0]["product_no"] == existing_no
+    assert preflight["conflicts"][0]["existing_name"] == "老产品"
+
+    # 预检不许写库
+    still_old = (
+        await db.execute(select(Product.product_name).where(Product.id == before_id))
+    ).scalar_one()
+    assert still_old == "老产品"
+
+    resp = await _post_commit(client, headers, preflight["token"], "skip")
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+    assert data["skipped_count"] == 1
+    assert data["created_count"] == 1
+    assert data["updated_count"] == 0
+
+    db.expire_all()
+    after = (
+        await db.execute(select(Product).where(Product.product_no == existing_no))
+    ).scalar_one()
+    assert (after.id, after.face_price, after.status, after.product_name) == (
+        before_id,
+        before_price,
+        before_status,
+        "老产品",
+    )
+
+    # token 单次消费：再提交同一个 token 必须失败而不是把包再写一遍
+    replay = await _post_commit(client, headers, preflight["token"], "skip")
+    assert replay.status_code == 409
+    assert replay.json()["detail"]["code"] == 40901
+
+
+@pytest.mark.anyio
+async def test_overwrite_keeps_id_and_only_touches_provided_cells(
+    client: AsyncClient, db: AsyncSession, minio: FakeMinio
+):
+    """覆盖：id 不变、没填的单元格保留原值、面价按表更新。"""
+    headers = await _login_admin(client)
+    master = await _seed_master(db)
+    no = f"IMP-{uuid4().hex[:6].upper()}"
+
+    first_sheet = _sheet_bytes(
+        [
+            {
+                "产品编号*": no,
+                "产品名称*": "原名",
+                "面价*": "760",
+                "品牌": master["品牌"],
+                "供应商": master["供应商"],
+                "分类": master["分类"],
+                "材质": "原材质",
+                "状态": "上架",
+            }
+        ]
+    )
+    await _post_import(client, headers, first_sheet, name="first.xlsx")
+    before = (
+        await db.execute(select(Product).where(Product.product_no == no))
+    ).scalar_one()
+    product_id = before.id
+    assert before.material == "原材质"
+    assert before.status == "active"
+
+    # 第二份表只改面价与名称：「材质 / 状态」整列不出现
+    second_sheet = _sheet_bytes(
+        [
+            {
+                "产品编号*": no,
+                "产品名称*": "新名字",
+                "面价*": "880",
+                "品牌": master["品牌"],
+                "供应商": master["供应商"],
+                "分类": master["分类"],
+            }
+        ]
+    )
+    preflight = await _post_preflight(client, headers, second_sheet)
+    assert preflight["existing_count"] == 1
+
+    resp = await _post_commit(
+        client, headers, preflight["token"], "overwrite", backup=True
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+    assert data["updated_count"] == 1
+    assert data["backup_id"], "覆盖模式应留下可回滚的快照"
+
+    db.expire_all()
+    after = (
+        await db.execute(select(Product).where(Product.id == product_id))
+    ).scalar_one()
+    assert after.id == product_id
+    assert after.product_name == "新名字"
+    assert after.face_price == 880
+    # 空白 = 不改
+    assert after.material == "原材质"
+    assert after.status == "active"
+
+
+@pytest.mark.anyio
+async def test_append_only_fills_blank_fields(
+    client: AsyncClient, db: AsyncSession, minio: FakeMinio
+):
+    """追加：只补空字段；已有面价不动。"""
+    headers = await _login_admin(client)
+    master = await _seed_master(db)
+    no = f"IMP-{uuid4().hex[:6].upper()}"
+
+    base = {
+        "产品编号*": no,
+        "产品名称*": "追加测试",
+        "面价*": "760",
+        "品牌": master["品牌"],
+        "供应商": master["供应商"],
+        "分类": master["分类"],
+    }
+    await _post_import(client, headers, _sheet_bytes([base]), name="base.xlsx")
+    before = (
+        await db.execute(select(Product).where(Product.product_no == no))
+    ).scalar_one()
+    product_id = before.id
+    assert before.material is None
+
+    sheet = _sheet_bytes([{**base, "面价*": "999", "材质": "新材质"}])
+    preflight = await _post_preflight(client, headers, sheet)
+    resp = await _post_commit(client, headers, preflight["token"], "append")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["appended_count"] == 1
+
+    db.expire_all()
+    after = (
+        await db.execute(select(Product).where(Product.id == product_id))
+    ).scalar_one()
+    assert after.material == "新材质"
+    # 面价已有值 → 追加模式不动
+    assert after.face_price == 760
+
+
+@pytest.mark.anyio
+async def test_preflight_reports_invalid_rows_without_touching_them(
+    client: AsyncClient, db: AsyncSession, minio: FakeMinio
+):
+    headers = await _login_admin(client)
+    master = await _seed_master(db)
+    sheet = _sheet_bytes(
+        [
+            {
+                "产品编号*": f"IMP-{uuid4().hex[:6].upper()}",
+                "产品名称*": "缺品牌",
+                "面价*": "100",
+                "品牌": "系统里没有的品牌",
+                "供应商": master["供应商"],
+                "分类": master["分类"],
+            }
+        ]
+    )
+    preflight = await _post_preflight(client, headers, sheet)
+    assert preflight["invalid_count"] == 1
+    assert preflight["new_count"] == 0
+    assert "系统里没有" in preflight["invalid"][0]["reason"]
+
+
+@pytest.mark.anyio
+async def test_import_creates_unknown_tags_and_binds_them(
+    client: AsyncClient, db: AsyncSession, minio: FakeMinio
+):
+    """新系列（如摩耳）以前会被「已忽略」，现在必须建标签并绑到产品上。"""
+    headers = await _login_admin(client)
+    master = await _seed_master(db)
+    series_name = f"摩耳{uuid4().hex[:4]}"
+    no = f"IMP-{uuid4().hex[:6].upper()}"
+
+    sheet = _sheet_bytes(
+        [
+            {
+                "产品编号*": no,
+                "产品名称*": "新系列椅子",
+                "面价*": "900",
+                "品牌": master["品牌"],
+                "供应商": master["供应商"],
+                "分类": master["分类"],
+                "标签": f"系列:{series_name},热销",
+            }
+        ]
+    )
+
+    preflight = await _post_preflight(client, headers, sheet)
+    assert preflight["new_tag_count"] == 2
+    typed = {tag["name"]: tag["tag_type"] for tag in preflight["new_tags"]}
+    assert typed[series_name] == "series"
+    assert typed["热销"] == "series"  # 预检按默认类型展示，最终以提交参数为准
+
+    resp = await _post_commit(client, headers, preflight["token"], "overwrite")
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+    assert data["created_tags"] == 2, data
+    assert series_name in data["new_tag_names"]
+
+    tag = (
+        await db.execute(
+            select(Tag).where(Tag.tag_name == series_name, Tag.is_deleted.is_(False))
+        )
+    ).scalar_one()
+    assert tag.tag_type == "series"
+
+    product = (
+        await db.execute(select(Product).where(Product.product_no == no))
+    ).scalar_one()
+    links = (
+        await db.execute(
+            select(ProductTag.tag_id).where(
+                ProductTag.product_id == product.id, ProductTag.is_deleted.is_(False)
+            )
+        )
+    ).scalars().all()
+    assert tag.id in links
+
+    # 第二次导入同一份表：标签已存在，不应重复创建
+    again = await _post_preflight(client, headers, sheet)
+    assert again["new_tag_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# 产品编号别名：103800022 ↔ P-103800022
+# ---------------------------------------------------------------------------
+
+_ALIAS_NO = "103800022"
+_ALIAS_PREFIXED = f"P-{_ALIAS_NO}"
+
+
+def _alias_row(
+    product_no: str,
+    name: str,
+    master: dict[str, str],
+    *,
+    price: str = "760",
+    image: str | None = "cover.png",
+    tag: str | None = None,
+) -> dict:
+    row = {
+        "产品编号*": product_no,
+        "产品名称*": name,
+        "面价*": price,
+        "品牌": master["品牌"],
+        "供应商": master["供应商"],
+        "分类": master["分类"],
+        "主图": image,
+    }
+    if tag:
+        row["标签"] = tag
+    return row
+
+
+async def _create_base_product(
+    client: AsyncClient,
+    headers: dict,
+    master: dict[str, str],
+    *,
+    product_no: str,
+    name: str,
+    price: str = "760",
+) -> None:
+    data = await _post_import(
+        client,
+        headers,
+        _zip_bytes(
+            _sheet_bytes([_alias_row(product_no, name, master, price=price)]),
+            {"cover.png": _COVER},
+        ),
+        name="base.zip",
+    )
+    assert data["created_count"] == 1, data
+
+
+async def _active_product(db: AsyncSession, product_id) -> Product:
+    db.expire_all()
+    return (
+        await db.execute(
+            select(Product).where(Product.id == product_id, Product.is_deleted.is_(False))
+        )
+    ).scalar_one()
+
+
+async def _active_images(db: AsyncSession, product_id) -> list[ProductImage]:
+    return list(
+        (
+            await db.execute(
+                select(ProductImage)
+                .where(
+                    ProductImage.product_id == product_id,
+                    ProductImage.is_deleted.is_(False),
+                )
+                .order_by(ProductImage.sort)
+            )
+        ).scalars()
+    )
+
+
+@pytest.mark.anyio
+async def test_alias_preflight_requires_choice_then_overwrites_original_id(
+    client: AsyncClient, db: AsyncSession, minio: FakeMinio
+):
+    """已有 103800022，再导入 P-103800022：未选处理方式不写库，选了按别名覆盖后 ID 不变。"""
+    headers = await _login_admin(client)
+    master = await _seed_master(db)
+    name = f"别名椅{uuid4().hex[:4]}"
+    await _create_base_product(client, headers, master, product_no=_ALIAS_NO, name=name)
+    base = (
+        await db.execute(select(Product).where(Product.product_no == _ALIAS_NO))
+    ).scalar_one()
+    base_id = base.id
+    old_images = await _active_images(db, base_id)
+    old_attachment_id = old_images[0].attachment_id
+
+    tag_name = f"别名系列{uuid4().hex[:4]}"
+    sheet = _sheet_bytes(
+        [
+            _alias_row(
+                _ALIAS_PREFIXED,
+                name,
+                master,
+                price="999",
+                image="new.png",
+                tag=f"系列:{tag_name}",
+            )
+        ]
+    )
+    payload = _zip_bytes(sheet, {"new.png": _EXTRA})
+    preflight = await _post_preflight(client, headers, payload, name="alias.zip")
+
+    assert preflight["new_count"] == 0
+    assert preflight["existing_count"] == 0
+    assert preflight["exact_existing_count"] == 0
+    assert preflight["alias_conflict_count"] == 1
+    assert preflight["alias_safe_count"] == 1
+    assert preflight["alias_high_risk_count"] == 0
+    conflict = preflight["alias_conflicts"][0]
+    assert conflict["risk"] == "safe"
+    assert conflict["alias_product_id"] == str(base_id)
+    assert conflict["alias_product_no"] == _ALIAS_NO
+
+    # 未明确选择：409，且不新增、不覆盖（token 未被消费）
+    resp = await _post_commit(client, headers, preflight["token"], "overwrite")
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"]["code"] == 40903
+    unchanged = await _active_product(db, base_id)
+    assert (unchanged.product_no, unchanged.face_price, unchanged.product_name) == (
+        _ALIAS_NO,
+        760,
+        name,
+    )
+    assert await _count(db, Product) == 1
+
+    # 明确选择按别名覆盖：写回原产品 ID，编号仍是库里存储的原值
+    resp = await _post_commit(
+        client, headers, preflight["token"], "overwrite", alias_action="overwrite_alias"
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+    assert data["success_count"] == 1
+    assert data["fail_count"] == 0, data["failures"]
+    assert data["alias_updated_count"] == 1
+    assert data["updated_count"] == 1
+    assert data["created_count"] == 0
+
+    after = await _active_product(db, base_id)
+    assert after.id == base_id
+    assert after.product_no == _ALIAS_NO
+    assert after.face_price == 999
+    assert await _count(db, Product) == 1
+
+    images = await _active_images(db, base_id)
+    assert [img.is_cover for img in images] == [True]
+    assert images[0].attachment_id != old_attachment_id
+
+    tag = (
+        await db.execute(
+            select(Tag).where(Tag.tag_name == tag_name, Tag.is_deleted.is_(False))
+        )
+    ).scalar_one()
+    links = (
+        await db.execute(
+            select(ProductTag.tag_id).where(
+                ProductTag.product_id == base_id, ProductTag.is_deleted.is_(False)
+            )
+        )
+    ).scalars().all()
+    assert tag.id in links
+
+
+@pytest.mark.anyio
+async def test_alias_reverse_order_keeps_prefixed_stored_number(
+    client: AsyncClient, db: AsyncSession, minio: FakeMinio
+):
+    """已有 P-103800022，再导入 103800022：同样按别名覆盖，存储编号保持 P- 前缀。"""
+    headers = await _login_admin(client)
+    master = await _seed_master(db)
+    name = f"反向别名椅{uuid4().hex[:4]}"
+    await _create_base_product(
+        client, headers, master, product_no=_ALIAS_PREFIXED, name=name
+    )
+    base = (
+        await db.execute(select(Product).where(Product.product_no == _ALIAS_PREFIXED))
+    ).scalar_one()
+    base_id = base.id
+
+    sheet = _sheet_bytes([_alias_row(_ALIAS_NO, name, master, price="888")])
+    payload = _zip_bytes(sheet, {"cover.png": _EXTRA})
+    preflight = await _post_preflight(client, headers, payload, name="reverse.zip")
+    assert preflight["alias_conflict_count"] == 1
+    assert preflight["alias_safe_count"] == 1
+    assert preflight["alias_conflicts"][0]["alias_product_no"] == _ALIAS_PREFIXED
+
+    resp = await _post_commit(
+        client, headers, preflight["token"], "overwrite", alias_action="overwrite_alias"
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["alias_updated_count"] == 1
+
+    after = await _active_product(db, base_id)
+    assert after.id == base_id
+    assert after.product_no == _ALIAS_PREFIXED
+    assert after.face_price == 888
+    assert await _count(db, Product) == 1
+
+
+@pytest.mark.anyio
+async def test_alias_name_mismatch_is_high_risk_and_never_auto_overwrites(
+    client: AsyncClient, db: AsyncSession, minio: FakeMinio
+):
+    """名称不同 → 高风险：全局「按别名覆盖」被拒绝；只能明确作为新产品创建。"""
+    headers = await _login_admin(client)
+    master = await _seed_master(db)
+    await _create_base_product(client, headers, master, product_no=_ALIAS_NO, name="椅子甲")
+    base = (
+        await db.execute(select(Product).where(Product.product_no == _ALIAS_NO))
+    ).scalar_one()
+    base_id = base.id
+
+    sheet = _sheet_bytes(
+        [_alias_row(_ALIAS_PREFIXED, "椅子乙", master, price="1200", image=None)]
+    )
+    preflight = await _post_preflight(client, headers, sheet)
+    assert preflight["alias_conflict_count"] == 1
+    assert preflight["alias_safe_count"] == 0
+    assert preflight["alias_high_risk_count"] == 1
+    conflict = preflight["alias_conflicts"][0]
+    assert conflict["risk"] == "high"
+    assert "名称不一致" in conflict["reason"]
+    assert conflict["alias_product_id"] == str(base_id)
+
+    # 未选择：409
+    resp = await _post_commit(client, headers, preflight["token"], "overwrite")
+    assert resp.status_code == 409
+
+    # 全局「按别名覆盖」也不允许吞掉高风险行：409，仍不写库
+    resp = await _post_commit(
+        client, headers, preflight["token"], "overwrite", alias_action="overwrite_alias"
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"]["code"] == 40903
+    unchanged = await _active_product(db, base_id)
+    assert (unchanged.product_name, unchanged.face_price) == ("椅子甲", 760)
+    assert await _count(db, Product) == 1
+
+    # 明确选择作为新产品创建：原产品一字不动，新增第二条
+    resp = await _post_commit(
+        client, headers, preflight["token"], "overwrite", alias_action="create_new"
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+    assert data["created_count"] == 1
+    assert data["alias_created_count"] == 1
+    assert data["updated_count"] == 0
+    assert await _count(db, Product) == 2
+    untouched = await _active_product(db, base_id)
+    assert untouched.product_name == "椅子甲"
+    assert untouched.face_price == 760
+    created = (
+        await db.execute(select(Product).where(Product.product_no == _ALIAS_PREFIXED))
+    ).scalar_one()
+    assert created.product_name == "椅子乙"
+
+
+@pytest.mark.anyio
+async def test_alias_multiple_candidates_is_high_risk(
+    client: AsyncClient, db: AsyncSession, minio: FakeMinio
+):
+    """103800022 与 P-103800022 同时存在时，第三行 p-103800022 候选不唯一 → 高风险。"""
+    headers = await _login_admin(client)
+    master = await _seed_master(db)
+    name = f"多候选椅{uuid4().hex[:4]}"
+    await _create_base_product(client, headers, master, product_no=_ALIAS_NO, name=name)
+    brand_id = (
+        await db.execute(select(Brand.id).where(Brand.brand_name == master["品牌"]))
+    ).scalar_one()
+    supplier_id = (
+        await db.execute(
+            select(Supplier.id).where(Supplier.supplier_name == master["供应商"])
+        )
+    ).scalar_one()
+    category_id = (
+        await db.execute(
+            select(Category.id).where(Category.category_name == master["分类"])
+        )
+    ).scalar_one()
+    db.add(
+        Product(
+            product_no=_ALIAS_PREFIXED,
+            product_name=name,
+            brand_id=brand_id,
+            supplier_id=supplier_id,
+            category_id=category_id,
+            face_price=760,
+            status="active",
+            completeness_status="complete",
+        )
+    )
+    await db.commit()
+    assert await _count(db, Product) == 2
+
+    # 小写 p- 不与库里的 P- 精确相同，因此走别名匹配，且能看见两条候选
+    sheet = _sheet_bytes(
+        [_alias_row(f"p-{_ALIAS_NO}", name, master, price="1000", image=None)]
+    )
+    preflight = await _post_preflight(client, headers, sheet)
+    assert preflight["exact_existing_count"] == 0
+    assert preflight["alias_conflict_count"] == 1
+    assert preflight["alias_safe_count"] == 0
+    assert preflight["alias_high_risk_count"] == 1
+    conflict = preflight["alias_conflicts"][0]
+    assert conflict["risk"] == "high"
+    assert "不唯一" in conflict["reason"]
+    assert conflict["alias_product_id"] is None
+
+    resp = await _post_commit(
+        client, headers, preflight["token"], "overwrite", alias_action="overwrite_alias"
+    )
+    assert resp.status_code == 409, resp.text
+    assert await _count(db, Product) == 2
+
+
+@pytest.mark.anyio
+async def test_alias_deleted_candidate_is_high_risk(
+    client: AsyncClient, db: AsyncSession, minio: FakeMinio
+):
+    """别名对应的产品已删除 → 高风险，不能被当成覆盖目标。"""
+    headers = await _login_admin(client)
+    master = await _seed_master(db)
+    name = f"已删除椅{uuid4().hex[:4]}"
+    await _create_base_product(client, headers, master, product_no=_ALIAS_NO, name=name)
+    base = (
+        await db.execute(select(Product).where(Product.product_no == _ALIAS_NO))
+    ).scalar_one()
+    base_id = base.id
+    await db.execute(
+        sa_update(Product)
+        .where(Product.id == base_id)
+        .values(is_deleted=True, deleted_at=func.now())
+    )
+    await db.commit()
+
+    sheet = _sheet_bytes(
+        [_alias_row(_ALIAS_PREFIXED, name, master, price="1001", image=None)]
+    )
+    preflight = await _post_preflight(client, headers, sheet)
+    assert preflight["exact_existing_count"] == 0
+    assert preflight["alias_conflict_count"] == 1
+    assert preflight["alias_high_risk_count"] == 1
+    conflict = preflight["alias_conflicts"][0]
+    assert conflict["risk"] == "high"
+    assert "已删除" in conflict["reason"]
+
+    resp = await _post_commit(
+        client, headers, preflight["token"], "overwrite", alias_action="overwrite_alias"
+    )
+    assert resp.status_code == 409, resp.text
+    db.expire_all()
+    still_deleted = (
+        await db.execute(select(Product).where(Product.id == base_id))
+    ).scalar_one()
+    assert still_deleted.is_deleted is True
+    assert still_deleted.face_price == 760
+
+
+@pytest.mark.anyio
+async def test_alias_conflict_skip_mode_is_explicit_and_keeps_everything(
+    client: AsyncClient, db: AsyncSession, minio: FakeMinio
+):
+    """skip 的既有语义不变：别名行也视为「已存在」，不需要额外选择且零写入。"""
+    headers = await _login_admin(client)
+    master = await _seed_master(db)
+    name = f"跳过椅{uuid4().hex[:4]}"
+    await _create_base_product(client, headers, master, product_no=_ALIAS_NO, name=name)
+    base = (
+        await db.execute(select(Product).where(Product.product_no == _ALIAS_NO))
+    ).scalar_one()
+    base_id = base.id
+
+    sheet = _sheet_bytes(
+        [_alias_row(_ALIAS_PREFIXED, name, master, price="1234", image=None)]
+    )
+    preflight = await _post_preflight(client, headers, sheet)
+    assert preflight["alias_conflict_count"] == 1
+
+    resp = await _post_commit(client, headers, preflight["token"], "skip")
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+    assert data["skipped_count"] == 1
+    assert data["created_count"] == 0
+    assert data["updated_count"] == 0
+
+    after = await _active_product(db, base_id)
+    assert after.face_price == 760
+    assert await _count(db, Product) == 1
+
+
+@pytest.mark.anyio
+async def test_alias_explicit_per_row_decision_can_handle_high_risk(
+    client: AsyncClient, db: AsyncSession, minio: FakeMinio
+):
+    """高风险行只有逐行明确选择才允许按别名覆盖；产品 ID 同样保持不变。"""
+    headers = await _login_admin(client)
+    master = await _seed_master(db)
+    await _create_base_product(client, headers, master, product_no=_ALIAS_NO, name="逐行甲")
+    base = (
+        await db.execute(select(Product).where(Product.product_no == _ALIAS_NO))
+    ).scalar_one()
+    base_id = base.id
+
+    sheet = _sheet_bytes(
+        [_alias_row(_ALIAS_PREFIXED, "逐行乙", master, price="555", image=None)]
+    )
+    preflight = await _post_preflight(client, headers, sheet)
+    row = preflight["alias_conflicts"][0]["row"]
+
+    resp = await _post_commit(
+        client,
+        headers,
+        preflight["token"],
+        "overwrite",
+        alias_decisions=[{"row": row, "action": "overwrite_alias"}],
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+    assert data["alias_updated_count"] == 1
+    assert data["fail_count"] == 0, data["failures"]
+
+    after = await _active_product(db, base_id)
+    assert after.id == base_id
+    assert after.product_no == _ALIAS_NO
+    assert after.product_name == "逐行乙"
+    assert after.face_price == 555
     assert await _count(db, Product) == 1

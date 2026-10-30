@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import (
     ai,
+    ai_config,
     audit,
     auth,
     categories,
@@ -21,6 +22,7 @@ from app.api.v1 import (
     observability,
     pending_actions,
     products,
+    proposal_floor_plans,
     proposals,
     roles,
     share_token,
@@ -29,9 +31,16 @@ from app.api.v1 import (
     version,
 )
 from app.api.v1.brands import router as brands_router
+from app.api.v1.content import router as content_router
+from app.api.v1.content_skills import router as content_skills_router
+from app.api.v1.customers import router as customers_router
+from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.files import router as files_router
 from app.api.v1.manuals import router as manuals_router
+from app.api.v1.project_spaces import router as project_spaces_router
+from app.api.v1.projects import router as projects_router
 from app.api.v1.quotations import router as quotations_router
+from app.api.v1.reminders import router as reminders_router
 from app.api.v1.scene_images import router as scene_images_router
 from app.api.v1.stats import router as stats_router
 from app.api.v1.suppliers import router as suppliers_router
@@ -160,15 +169,48 @@ def _volume_status() -> dict[str, dict[str, int | bool]]:
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     # Record startup timestamp for readiness / ops-status reporting.
     _app.state.started_at = time.time()
-    yield
-    # Release adapter-held HTTP clients (e.g. OpenAIAdapter's httpx.AsyncClient).
-    from app.adapters.factory import _cached_adapter
+    # Warm the AI config cache (DB override layer) before serving traffic so the
+    # first request already resolves provider settings instead of env-only.
+    from app.services.ai_config import CACHE_TTL_SECONDS, refresh_cache
 
-    if _cached_adapter is not None:
+    try:
+        await refresh_cache()
+    except Exception:
+        pass
+
+    # 周期刷新：只在「启动 + 保存配置」时刷新是不够的——快照一旦过期，
+    # 读路径就会回落 env，把管理员在 AI 配置中心显式改的模型/Key 静默丢回
+    # 环境变量值（2026-10-28 实测：改模型后约 15 秒又变回 env 的旧模型）。
+    # 这里用短于 TTL 的间隔持续续期，保证缓存始终是 DB 覆盖层的真值。
+    async def _refresh_ai_config_loop() -> None:
+        interval = max(1.0, CACHE_TTL_SECONDS / 3.0)
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                await refresh_cache()
+            except Exception:
+                # DB 抖动时保留旧快照（refresh_cache 自身已保证），绝不清空。
+                pass
+
+    refresher = asyncio.create_task(_refresh_ai_config_loop())
+
+    try:
+        yield
+    finally:
+        refresher.cancel()
         try:
-            await _cached_adapter.aclose()
-        except Exception:
+            await refresher
+        except asyncio.CancelledError:
             pass
+    # Release adapter-held HTTP clients (e.g. OpenAIAdapter's httpx.AsyncClient).
+    from app.adapters.factory import _cached_adapter, _cached_content_adapter
+
+    for adapter in (_cached_adapter, _cached_content_adapter):
+        if adapter is not None:
+            try:
+                await adapter.aclose()
+            except Exception:
+                pass
 
 
 app = FastAPI(
@@ -199,9 +241,15 @@ app.include_router(brands_router, prefix="/api/v1/brands", tags=["brands"])
 app.include_router(suppliers_router, prefix="/api/v1/suppliers", tags=["suppliers"])
 app.include_router(tags_router, prefix="/api/v1/tags", tags=["tags"])
 app.include_router(proposals.router, prefix="/api/v1/proposals", tags=["proposals"])
+app.include_router(
+    proposal_floor_plans.router,
+    prefix="/api/v1/proposals/{proposal_id}/floor-plans",
+    tags=["proposals"],
+)
 app.include_router(shares.router, prefix="/api/v1/shares", tags=["shares"])
 app.include_router(share_token.router, prefix="/api/v1", tags=["shares"])
 app.include_router(ai.router, prefix="/api/v1/ai", tags=["ai"])
+app.include_router(ai_config.router, tags=["ai-config"])
 app.include_router(knowledge.router, prefix="/api/v1/knowledge", tags=["knowledge"])
 app.include_router(knowledge_sources.router, prefix="/api/v1/knowledge", tags=["knowledge"])
 app.include_router(pending_actions.router, prefix="/api/v1/ai/actions", tags=["ai"])
@@ -210,6 +258,13 @@ app.include_router(quotations_router, prefix="/api/v1/quotations", tags=["quotat
 app.include_router(files_router, prefix="/api/v1/files", tags=["files"])
 app.include_router(manuals_router, prefix="/api/v1/manuals", tags=["manuals"])
 app.include_router(stats_router, prefix="/api/v1/stats", tags=["stats"])
+app.include_router(dashboard_router)
+app.include_router(customers_router)
+app.include_router(projects_router)
+app.include_router(project_spaces_router)
+app.include_router(content_router)
+app.include_router(content_skills_router)
+app.include_router(reminders_router)
 app.include_router(scene_images_router, prefix="/api/v1/scene-images", tags=["scene_images"])
 app.include_router(version.router, prefix="/api/v1", tags=["version"])
 

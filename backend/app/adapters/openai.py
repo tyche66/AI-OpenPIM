@@ -62,15 +62,24 @@ class OpenAIConfig:
     api_url: str = "https://api.openai.com/v1"
     chat_model: str = "gpt-4o-mini"
     embedding_model: str = "text-embedding-3-small"
+    # 视觉标注模型；为空表示该配置不提供视觉能力（不回落 chat_model）。
+    vision_model: str | None = None
     timeout: float = 30.0
     max_retries: int = 2
     # Optional separate embedding endpoint (e.g., OpenRouter)
     embedding_api_key: str | None = None
     embedding_api_url: str | None = None
+    allowed_chat_models: frozenset[str] | None = None
 
     def __post_init__(self):
         if not self.api_key:
             raise ValueError("OpenAIConfig.api_key is required")
+        if self.allowed_chat_models:
+            self.allowed_chat_models = frozenset(
+                model.strip() for model in self.allowed_chat_models if model.strip()
+            )
+            if self.chat_model not in self.allowed_chat_models:
+                raise ValueError("OpenAIConfig.chat_model is not in allowed_chat_models")
 
     def chat_path(self) -> str:
         return "/chat/completions"
@@ -182,11 +191,13 @@ class OpenAIAdapter(AIServiceAdapter):
         system: str | None = None,
         tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.4,
+        model: str | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
+        requested_model = self._resolve_chat_model(model)
         messages = self._build_messages(system, history, message)
         payload: dict[str, Any] = {
-            "model": self.cfg.chat_model,
+            "model": requested_model,
             "messages": messages,
             "temperature": temperature,
             "stream": False,
@@ -202,9 +213,33 @@ class OpenAIAdapter(AIServiceAdapter):
             "answer": answer,
             "sources": [],
             "tool_calls": _coerce_tool_calls(msg.get("tool_calls")),
-            "model": resp.get("model"),
+            "model": resp.get("model") or requested_model,
             "usage": resp.get("usage"),
         }
+
+    async def vision_chat(
+        self, image_url: str, prompt: str, *, model: str | None = None
+    ) -> str:
+        """多模态识图：image_url 支持 http(s) 直链或 data URL。"""
+        requested_model = self._resolve_chat_model(model or self.cfg.vision_model)
+        payload: dict[str, Any] = {
+            "model": requested_model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": image_url}},
+                    ],
+                }
+            ],
+            "temperature": 0.1,
+            "stream": False,
+        }
+        resp = await self._post(self.cfg.chat_path(), payload)
+        choice = (resp.get("choices") or [{}])[0]
+        msg = choice.get("message") or {}
+        return (msg.get("content") or "").strip()
 
     async def chat_stream(
         self,
@@ -213,9 +248,10 @@ class OpenAIAdapter(AIServiceAdapter):
         history: list[dict[str, str]],
         **kwargs: Any,
     ) -> AsyncGenerator[dict[str, Any], None]:
+        requested_model = self._resolve_chat_model(kwargs.pop("model", None))
         messages = self._build_messages(None, history, message)
         payload: dict[str, Any] = {
-            "model": self.cfg.chat_model,
+            "model": requested_model,
             "messages": messages,
             "stream": True,
             "temperature": kwargs.pop("temperature", 0.4),
@@ -368,6 +404,12 @@ class OpenAIAdapter(AIServiceAdapter):
         return {"error": f"unknown action: {action}"}
 
     # ---------- internal helpers ----------
+    def _resolve_chat_model(self, model: str | None) -> str:
+        selected = model or self.cfg.chat_model
+        if self.cfg.allowed_chat_models and selected not in self.cfg.allowed_chat_models:
+            raise AIAdapterBadRequestError("requested model is not allowed")
+        return selected
+
     def _build_messages(
         self,
         system: str | None,
@@ -385,7 +427,9 @@ class OpenAIAdapter(AIServiceAdapter):
         msgs.append({"role": "user", "content": message})
         return msgs
 
-    async def _post(self, path: str, payload: dict[str, Any], client: httpx.AsyncClient | None = None) -> dict[str, Any]:
+    async def _post(
+        self, path: str, payload: dict[str, Any], client: httpx.AsyncClient | None = None
+    ) -> dict[str, Any]:
         attempts = 0
         last_msg: str | None = None
         http_client = client or self._client
@@ -422,10 +466,10 @@ class OpenAIAdapter(AIServiceAdapter):
                 last_msg = _map_http_status_error(exc)
                 attempts += 1
                 logger.warning(
-                    "openai call failed (attempt %s/%s): %s",
+                    "openai call failed (attempt %s/%s) error_type=%s",
                     attempts,
                     self.cfg.max_retries + 1,
-                    last_msg,
+                    type(exc).__name__,
                 )
                 if attempts > self.cfg.max_retries:
                     raise
@@ -433,10 +477,10 @@ class OpenAIAdapter(AIServiceAdapter):
                 last_msg = "upstream connection failed"
                 attempts += 1
                 logger.warning(
-                    "openai transport error (attempt %s/%s): %s",
+                    "openai transport error (attempt %s/%s) error_type=%s",
                     attempts,
                     self.cfg.max_retries + 1,
-                    exc,
+                    type(exc).__name__,
                 )
                 if attempts > self.cfg.max_retries:
                     raise AIAdapterServerError(last_msg) from exc

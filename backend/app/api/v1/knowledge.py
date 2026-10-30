@@ -33,7 +33,11 @@ async def query(
     if not settings.KNOWLEDGE_GATEWAY_ENABLED:
         raise HTTPException(
             status_code=503,
-            detail={"code": "CAPABILITY_DISABLED", "msg": "Knowledge Gateway 已关闭", "retryable": False},
+            detail={
+                "code": "CAPABILITY_DISABLED",
+                "msg": "Knowledge Gateway 已关闭",
+                "retryable": False,
+            },
         )
     try:
         body = KnowledgeQueryRequest.model_validate(await request.json())

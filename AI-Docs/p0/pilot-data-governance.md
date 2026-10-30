@@ -1,6 +1,6 @@
 # P0 试点产品数据治理方案
 
-> 状态：P0 数据门文档。当前试点数据来自 `backend/data/sunon_pilot_products.json`，共 13 条pilot办公家具产品，均存在 `status=draft`、`completeness_status=pending`、`face_price=99999`、`cost_price=null`、`stock_status=unknown` 等占位问题。
+> 状态：P0 数据门文档。当前试点数据来自 `backend/data/pilot_products.json`，共 13 条pilot办公家具产品，均存在 `status=draft`、`completeness_status=pending`、`face_price=99999`、`cost_price=null`、`stock_status=unknown` 等占位问题。
 
 ## 1. 试点数据可验证场景
 

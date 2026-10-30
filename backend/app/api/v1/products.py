@@ -3,14 +3,20 @@ import datetime
 import io
 import logging
 import os
+import re
+import time
+import unicodedata
 from collections.abc import Callable
 from decimal import Decimal
+from html import escape
 from typing import Any
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import func, select
+from sqlalchemy import update as sa_update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
@@ -21,6 +27,7 @@ from app.core.minio_client import get_minio_client
 from app.core.permission import PermissionChecker
 from app.core.security import create_access_token
 from app.core.serializers import filter_sensitive_fields
+from app.knowledge.jobs.dispatcher import enqueue_product_card
 from app.middleware.audit import audit_action
 from app.models.product import (
     Attachment,
@@ -40,8 +47,24 @@ from app.schemas.product import (
     ProductResponse,
     ProductUpdate,
 )
+from app.services.category_scope import category_with_descendants
 from app.services.excel_images import extract_embedded_images
+from app.services.import_staging import (
+    StagingError,
+    cleanup_expired,
+    consume_staged,
+    discard_staged,
+    load_staged,
+    stage_upload,
+    update_staged_meta,
+)
+from app.services.product_filter_options import (
+    FilterOptionError,
+    list_filter_options,
+    specification_values_for,
+)
 from app.services.product_import import (
+    PLACEHOLDER_PRICE,
     ProductRow,
     RowFields,
     SheetError,
@@ -49,6 +72,7 @@ from app.services.product_import import (
     parse_row,
     read_product_sheet,
 )
+from app.services.product_import_backup import write_import_backup
 from app.services.product_import_media import (
     ROLE_MAIN,
     ROLE_SCENE,
@@ -89,6 +113,7 @@ async def list_products(
     request: Request,
     category_id: UUID | None = None,
     tag_ids: str | None = None,
+    tag_type: str | None = None,
     keyword: str | None = None,
     brand_id: UUID | None = None,
     supplier_id: UUID | None = None,
@@ -96,6 +121,7 @@ async def list_products(
     stock_status: str | None = None,
     min_price: Decimal | None = None,
     max_price: Decimal | None = None,
+    spec_length_mm: float | None = None,
     completeness_status: str | None = None,
     quality_flag: str | None = None,
     page: int = Query(1, ge=1),
@@ -123,7 +149,9 @@ async def list_products(
     )
 
     if category_id:
-        query = query.where(Product.category_id == category_id)
+        # 多级分类导航：选中一级分类要带出全部子分类的产品。
+        scoped_ids = await category_with_descendants(db, category_id)
+        query = query.where(Product.category_id.in_(scoped_ids))
     if brand_id:
         query = query.where(Product.brand_id == brand_id)
     if supplier_id:
@@ -137,13 +165,28 @@ async def list_products(
             ) from exc
         if parsed_tag_ids:
             query = (
-                query.join(ProductTag)
-                .where(
-                    ProductTag.tag_id.in_(parsed_tag_ids),
-                    ProductTag.is_deleted.is_(False),
+                query.join(
+                    ProductTag,
+                    (ProductTag.product_id == Product.id)
+                    & (ProductTag.is_deleted.is_(False)),
                 )
+                .where(ProductTag.tag_id.in_(parsed_tag_ids))
                 .distinct()
             )
+    if tag_type:
+        # 系列维度的二级计数只算「有系列标签」的产品，点进去也必须用同一口径，
+        # 否则菜单上写 207、列表里却出 300。
+        query = query.where(
+            Product.id.in_(
+                select(ProductTag.product_id)
+                .join(Tag, Tag.id == ProductTag.tag_id)
+                .where(
+                    ProductTag.is_deleted.is_(False),
+                    Tag.is_deleted.is_(False),
+                    Tag.tag_type == tag_type,
+                )
+            )
+        )
     if status:
         query = query.where(Product.status == status)
     if stock_status:
@@ -166,6 +209,11 @@ async def list_products(
         query = query.where(Product.face_price != 99999, Product.face_price >= min_price)
     if max_price is not None:
         query = query.where(Product.face_price != 99999, Product.face_price <= max_price)
+    if spec_length_mm is not None:
+        # 品类三级：按规格第一段（长度）筛选。规格写法不统一，先解析成原值集合再精确匹配，
+        # 保证与筛选菜单的计数同源。
+        spec_values = await specification_values_for(db, spec_length_mm)
+        query = query.where(Product.specification.in_(spec_values))
 
     query = _apply_quality_filter(
         query,
@@ -173,7 +221,13 @@ async def list_products(
         quality_flag=quality_flag,
     )
 
-    total_result = await db.execute(select(func.count()).select_from(query.subquery()))
+    # 计算总数时只数子查询中的 Product.id。不能在 select_from(query.subquery())
+    # 外再引用 Product.id，否则 SQLAlchemy 会把原始 product 表再次放进 FROM，
+    # 造成笛卡尔积并使筛选后的 total 不可信。
+    product_rows = query.subquery()
+    total_result = await db.execute(
+        select(func.count(func.distinct(product_rows.c.id))).select_from(product_rows)
+    )
     total = total_result.scalar()
 
     query = query.offset((page - 1) * size).limit(size)
@@ -200,6 +254,7 @@ async def export_products(
     request: Request,
     category_id: UUID | None = None,
     tag_ids: str | None = None,
+    tag_type: str | None = None,
     keyword: str | None = None,
     brand_id: UUID | None = None,
     supplier_id: UUID | None = None,
@@ -207,12 +262,14 @@ async def export_products(
     stock_status: str | None = None,
     min_price: float | None = None,
     max_price: float | None = None,
+    spec_length_mm: float | None = None,
 ):
     role_code = getattr(request.state, "role_code", None) or "sales"
 
     rows = await fetch_products_for_export(
         category_id=category_id,
         tag_ids=tag_ids,
+        tag_type=tag_type,
         keyword=keyword,
         brand_id=brand_id,
         supplier_id=supplier_id,
@@ -220,11 +277,13 @@ async def export_products(
         stock_status=stock_status,
         min_price=min_price,
         max_price=max_price,
+        spec_length_mm=spec_length_mm,
     )
 
     total = await count_products_for_export(
         category_id=category_id,
         tag_ids=tag_ids,
+        tag_type=tag_type,
         keyword=keyword,
         brand_id=brand_id,
         supplier_id=supplier_id,
@@ -232,6 +291,7 @@ async def export_products(
         stock_status=stock_status,
         min_price=min_price,
         max_price=max_price,
+        spec_length_mm=spec_length_mm,
     )
 
     excel_bytes = build_excel_bytes(rows, role_code=role_code)
@@ -268,6 +328,157 @@ async def download_import_template():
             "Content-Disposition": 'attachment; filename="products_import_template.xlsx"',
         },
     )
+
+
+class ProductCompareExportRequest(BaseModel):
+    """门户「逐项比较」导出：只带产品 ID，字段一律回库取，不信客户端。"""
+
+    product_ids: list[UUID]
+
+
+def _build_compare_html(products: list[Product]) -> str:
+    """比较表 PDF 的中间 HTML（Gotenberg 渲染前）。"""
+    headers = [
+        "产品编号",
+        "产品名称",
+        "品牌",
+        "类目",
+        "规格",
+        "材质",
+        "颜色",
+        "交货期",
+        "面价",
+        "库存",
+    ]
+    rows = []
+    for p in products:
+        cells = [
+            p.product_no,
+            p.product_name,
+            p.brand.brand_name if p.brand else "-",
+            p.category.category_name if p.category else "-",
+            p.specification or "-",
+            p.material or "-",
+            p.colors or "-",
+            p.delivery_period or "-",
+            "待核价" if p.face_price == 99999 else f"¥{p.face_price:,.2f}",
+            p.stock_status or "-",
+        ]
+        rows.append("".join(f"<td>{escape(str(cell))}</td>" for cell in cells))
+
+    head = "".join(f"<th>{escape(title)}</th>" for title in headers)
+    body = "".join(f"<tr>{row}</tr>" for row in rows)
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<style>
+  body {{ font-family: "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+         margin: 24px; color: #1f2329; }}
+  h1 {{ font-size: 20px; margin: 0 0 4px; }}
+  p.meta {{ color: #6b7280; font-size: 12px; margin: 0 0 16px; }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 11px; }}
+  th, td {{ border: 1px solid #d0d5dd; padding: 6px 8px; text-align: left; vertical-align: top; }}
+  th {{ background: #f5f6f8; font-weight: 600; }}
+</style>
+</head>
+<body>
+  <h1>产品比较表</h1>
+  <p class="meta">共 {len(products)} 个产品 · 数据来自 OpenPIM 产品库</p>
+  <table>
+    <thead><tr>{head}</tr></thead>
+    <tbody>{body}</tbody>
+  </table>
+</body>
+</html>"""
+
+
+# 同样排在 /{product_id} 之前（POST 与 GET 不冲突，但保持静态路径集中）。
+@router.post("/compare-pdf", dependencies=[Depends(PermissionChecker("product:view"))])
+async def export_compare_pdf(
+    payload: ProductCompareExportRequest, db: AsyncSession = Depends(get_db)
+):
+    """把门户比较结果渲染成 PDF（复用报价单的 Gotenberg 通道）。
+
+    只接受 ID 列表：价格、库存等敏感字段以数据库当前值为准，避免客户端
+    篡改出一条「更便宜」的报价表。
+    """
+    if not payload.product_ids:
+        raise HTTPException(status_code=422, detail={"code": 42201, "msg": "请先选择要比较的产品"})
+    if len(payload.product_ids) > 20:
+        raise HTTPException(
+            status_code=422, detail={"code": 42201, "msg": "一次最多比较 20 个产品"}
+        )
+
+    gotenberg_url = (settings.GOTENBERG_URL or "").rstrip("/")
+    if not gotenberg_url:
+        raise HTTPException(status_code=503, detail={"code": 50301, "msg": "PDF 服务未配置"})
+
+    result = await db.execute(
+        select(Product)
+        .options(
+            joinedload(Product.brand),
+            joinedload(Product.category),
+        )
+        .where(Product.id.in_(payload.product_ids), Product.is_deleted.is_(False))
+    )
+    by_id = {p.id: p for p in result.scalars().all()}
+    ordered = [by_id[pid] for pid in payload.product_ids if pid in by_id]
+    if not ordered:
+        raise HTTPException(status_code=404, detail={"code": 40401, "msg": "产品不存在"})
+
+    html = _build_compare_html(ordered)
+    files = {"files": ("index.html", html.encode("utf-8"), "text/html")}
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            pdf_resp = await client.post(
+                f"{gotenberg_url}/forms/chromium/convert/html", files=files
+            )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=503, detail={"code": 50302, "msg": "PDF 服务不可用"}
+        ) from exc
+
+    if pdf_resp.status_code >= 400:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": 50201,
+                "msg": "PDF 服务生成失败",
+                "upstream_status": pdf_resp.status_code,
+            },
+        )
+
+    from fastapi.responses import Response as FastAPIResponse
+
+    return FastAPIResponse(
+        content=pdf_resp.content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="product_compare.pdf"'},
+    )
+
+
+# ---------------------------------------------------------------------------
+# 产品列表三级筛选导航：六维度二级 / 三级选项
+# ---------------------------------------------------------------------------
+@router.get("/filter-options", dependencies=[Depends(PermissionChecker("product:view"))])
+async def product_filter_options(
+    dimension: str = Query(..., description="series/brand/supplier/status/stock/category"),
+    parent_id: str | None = Query(None, description="二级选中值；省略时返回二级选项"),
+    db: AsyncSession = Depends(get_db),
+):
+    """返回某个维度下的二级（或三级）筛选项。
+
+    菜单项和计数全部由产品表实时聚合，没有产品的分类/品牌/标签不会出现；
+    三级与筛选条件共用同一套 SQL 表达式，所以「菜单上写着 12 个」点进去就是 12 个。
+    """
+    try:
+        items = await list_filter_options(db, dimension=dimension, parent_id=parent_id)
+    except FilterOptionError as exc:
+        raise HTTPException(
+            status_code=422, detail={"code": 42201, "msg": str(exc)}
+        ) from exc
+    return {"code": 200, "data": {"dimension": dimension, "items": items}}
 
 
 # ---------------------------------------------------------------------------
@@ -539,6 +750,7 @@ def _product_response(product: Product, request: Request) -> dict:
         "description": product.description,
         "specification": product.specification,
         "colors": product.colors,
+        "delivery_period": product.delivery_period,
         "data_source": product.data_source,
         "completeness_status": product.completeness_status,
         "tag_ids": [str(tag.id) for tag in product.tags],
@@ -577,6 +789,7 @@ def _product_list_response(product: Product, request: Request) -> dict:
         "description": product.description,
         "specification": product.specification,
         "colors": product.colors,
+        "delivery_period": product.delivery_period,
         "data_source": product.data_source,
         "completeness_status": product.completeness_status,
         "create_time": product.create_time.isoformat(),
@@ -663,7 +876,10 @@ async def add_product_images(
             status_code=422,
             detail={
                 "code": 42201,
-                "msg": f"产品图片数量已达上限（最多 {MAX_PRODUCT_IMAGES} 张），当前 {current_count} 张，尝试添加 {len(data.attachment_ids)} 张",
+                "msg": (
+                    f"产品图片数量已达上限（最多 {MAX_PRODUCT_IMAGES} 张），"
+                    f"当前 {current_count} 张，尝试添加 {len(data.attachment_ids)} 张"
+                ),
             },
         )
 
@@ -712,6 +928,8 @@ async def add_product_images(
         db.add(product_image)
         added.append(product_image)
 
+    if added:
+        await enqueue_product_card(db, product_id)
     await db.commit()
 
     return {
@@ -755,6 +973,7 @@ async def delete_product_image(
         raise HTTPException(status_code=404, detail={"code": 40401, "msg": "图片关联不存在"})
 
     product_image.is_deleted = True
+    await enqueue_product_card(db, product_id)
     await db.commit()
     return {"code": 200, "msg": "success"}
 
@@ -792,6 +1011,7 @@ async def set_product_cover_image(
         .values(is_cover=False)
     )
     product_image.is_cover = True
+    await enqueue_product_card(db, product_id)
     await db.commit()
     return {"code": 200, "msg": "success"}
 
@@ -868,7 +1088,10 @@ async def bind_product_scene_images(
             status_code=422,
             detail={
                 "code": 42201,
-                "msg": f"场景图数量已达上限（最多 {MAX_PRODUCT_SCENE_IMAGES} 张），当前 {current_count} 张，尝试添加 {len(data.scene_image_ids)} 张",
+                "msg": (
+                    f"场景图数量已达上限（最多 {MAX_PRODUCT_SCENE_IMAGES} 张），"
+                    f"当前 {current_count} 张，尝试添加 {len(data.scene_image_ids)} 张"
+                ),
             },
         )
 
@@ -1029,6 +1252,7 @@ async def create_product(
         for tag_id in product_data.tag_ids:
             db.add(ProductTag(product_id=product.id, tag_id=tag_id))
 
+    await enqueue_product_card(db, product.id)
     await db.commit()
     product = await db.scalar(
         select(Product)
@@ -1081,6 +1305,7 @@ async def update_product(
         for tag_id in tag_ids:
             db.add(ProductTag(product_id=product.id, tag_id=tag_id))
 
+    await enqueue_product_card(db, product.id)
     await db.commit()
     product = await db.scalar(
         select(Product)
@@ -1109,6 +1334,7 @@ async def delete_product(request: Request, product_id: UUID, db: AsyncSession = 
         raise HTTPException(status_code=404, detail={"code": 40401, "msg": "产品不存在"})
 
     product.is_deleted = True
+    await enqueue_product_card(db, product.id, operation="delete")
     await db.commit()
     return {"code": 200, "msg": "success"}
 
@@ -1167,6 +1393,7 @@ async def clone_product(
         material=product.material,
         specification=product.specification,
         colors=product.colors,
+        delivery_period=product.delivery_period,
         description=product.description,
         data_source=product.data_source,
         completeness_status=product.completeness_status,
@@ -1181,6 +1408,7 @@ async def clone_product(
     for pt in tag_result.scalars().all():
         db.add(ProductTag(product_id=cloned.id, tag_id=pt.tag_id))
 
+    await enqueue_product_card(db, cloned.id)
     await db.commit()
     await db.refresh(cloned)
     body = ProductCloneResponse.model_validate(cloned).model_dump(mode="json")
@@ -1284,36 +1512,559 @@ def _ingest_row_media(
     return per_row, warnings, sources
 
 
-@router.post("/import", dependencies=[Depends(PermissionChecker("product:import"))])
-@audit_action("product_import", module="products")
-async def import_products(
-    request: Request,
-    file: UploadFile = File(...),
-    skip_if_exists: bool = Query(False, alias="skipIfExists"),
-    db: AsyncSession = Depends(get_db),
-):
-    """批量导入产品，连产品图和场景图一起导。
+IMPORT_MODES = frozenset({"create", "overwrite", "append", "skip"})
 
-    收三种给图方式（都在 tests/unit/test_product_import_media.py 里钉着）：
+# 预检暂存目录的清理节流（秒）。只影响失效 token 的磁盘回收，不影响正确性。
+_STAGING_CLEANUP_INTERVAL = 3600
+_staging_cleaned_at = 0.0
 
-    1. 图片贴在表格里（浮动图片 / WPS 的 DISPIMG / M365 的「置于单元格内」）——
-       按图片落在哪一行哪一列决定归属：主图列→封面，产品图列→产品图，场景图列→场景图；
-    2. 上传一个 zip：表格 + 图片文件，格子里写文件名，或者干脆把文件名以产品编号开头
-       （SUNON-001-1.jpg），后者只在这一行没写任何图片名时才启用；
-    3. 格子里写 http(s) 直链 —— 默认关闭（SSRF），要开见
-       settings.PRODUCT_IMPORT_ALLOW_URL_FETCH。
 
-    写库分两段：先把图片对象和 attachment/scene_image 落下来（同一 sha256 全批只传一次、
-    只建一条 attachment），再按行开 SAVEPOINT 建产品。老实现是整批一次 commit，一行撞
-    约束就把前面几百行一起带走；现在一行失败只回滚那一行，其余照常入库。
+def _maybe_cleanup_staging() -> None:
+    global _staging_cleaned_at
+    now = time.time()
+    if now - _staging_cleaned_at < _STAGING_CLEANUP_INTERVAL:
+        return
+    _staging_cleaned_at = now
+    try:
+        cleanup_expired()
+    except OSError:
+        logger.warning("清理导入预检暂存失败", exc_info=True)
+
+# RowFields.provided 里「直接写回 Product 列」的字段
+_IMPORT_WRITABLE_FIELDS = (
+    "product_name",
+    "face_price",
+    "cost_price",
+    "material",
+    "specification",
+    "colors",
+    "delivery_period",
+    "description",
+    "data_source",
+    "stock_status",
+    "status",
+    "completeness_status",
+)
+
+
+def _apply_product_fields(
+    product: Product, fields: RowFields, refs: dict[str, UUID], mode: str
+) -> None:
+    """把表格字段合并进现有产品。
+
+    * 只处理 ``fields.provided`` 里的字段 —— 单元格空着不等于「清空」；
+    * 追加模式只在库里为空时写，已有非空值一律不动；
+    * 面价写占位价 99999 时必须同时把完整度改成 pending，否则撞
+      ``check_product_placeholder_price``；反过来写了真实价格就把悬挂的
+      「待补充」恢复成 complete（除非表格自己指定了完整度）。
     """
+    for field in _IMPORT_WRITABLE_FIELDS:
+        if field not in fields.provided:
+            continue
+        value = getattr(fields, field)
+        if mode == "append" and getattr(product, field) not in (None, ""):
+            continue
+        setattr(product, field, value)
+        if field == "face_price":
+            if value == PLACEHOLDER_PRICE:
+                product.completeness_status = "pending"
+            elif "completeness_status" not in fields.provided:
+                product.completeness_status = "complete"
+
+    for key in ("brand_id", "supplier_id", "category_id"):
+        ident = refs.get(key)
+        if ident is None:
+            continue
+        if mode == "append" and getattr(product, key):
+            continue
+        setattr(product, key, ident)
+
+
+async def _existing_tag_ids(db: AsyncSession, product_id: UUID) -> set[UUID]:
+    rows = (
+        await db.execute(
+            select(ProductTag.tag_id).where(
+                ProductTag.product_id == product_id, ProductTag.is_deleted.is_(False)
+            )
+        )
+    ).scalars().all()
+    return set(rows)
+
+
+async def _replace_product_tags(
+    db: AsyncSession,
+    product: Product,
+    fields: RowFields,
+    tag_index: tuple[dict[tuple[str, str], UUID], dict[str, list[UUID]]],
+) -> None:
+    """标签整组替换：表格没写标签列就不动，写了就按表格内容重建。"""
+    if "tag_names" not in fields.provided:
+        return
+    await db.execute(
+        sa_update(ProductTag)
+        .where(ProductTag.product_id == product.id, ProductTag.is_deleted.is_(False))
+        .values(is_deleted=True, deleted_at=func.now())
+    )
+    for tag_name, type_hint in fields.tag_specs:
+        tag_id = _resolve_tag_id(tag_index, tag_name, type_hint)
+        if tag_id is not None:
+            db.add(ProductTag(product_id=product.id, tag_id=tag_id))
+
+
+async def _append_product_tags(
+    db: AsyncSession,
+    product: Product,
+    fields: RowFields,
+    tag_index: tuple[dict[tuple[str, str], UUID], dict[str, list[UUID]]],
+) -> None:
+    if not fields.tag_specs:
+        return
+    current = await _existing_tag_ids(db, product.id)
+    for tag_name, type_hint in fields.tag_specs:
+        tag_id = _resolve_tag_id(tag_index, tag_name, type_hint)
+        if tag_id is not None and tag_id not in current:
+            db.add(ProductTag(product_id=product.id, tag_id=tag_id))
+            current.add(tag_id)
+
+
+async def _replace_product_images(
+    db: AsyncSession, product: Product, gallery: list, attachments: dict
+) -> int:
+    """整套替换产品图；这一行没解析到图时保留原图（空表不等于删图）。"""
+    if not gallery:
+        return 0
+    await db.execute(
+        sa_update(ProductImage)
+        .where(ProductImage.product_id == product.id, ProductImage.is_deleted.is_(False))
+        .values(is_deleted=True, deleted_at=func.now())
+    )
+    for index, obj in enumerate(gallery):
+        db.add(
+            ProductImage(
+                product_id=product.id,
+                attachment_id=attachments[obj.sha256].id,
+                sort=index,
+                is_cover=index == 0,
+            )
+        )
+    return len(gallery)
+
+
+async def _append_product_images(
+    db: AsyncSession, product: Product, gallery: list, attachments: dict
+) -> int:
+    """只增不减：按 attachment 去重，原本没有封面才把第一张新图设成封面。"""
+    if not gallery:
+        return 0
+    rows = (
+        await db.execute(
+            select(ProductImage.attachment_id, ProductImage.is_cover, ProductImage.sort).where(
+                ProductImage.product_id == product.id, ProductImage.is_deleted.is_(False)
+            )
+        )
+    ).all()
+    existing = {row.attachment_id for row in rows}
+    has_cover = any(row.is_cover for row in rows)
+    next_sort = max((row.sort or 0 for row in rows), default=-1) + 1
+    added = 0
+    for obj in gallery:
+        attachment_id = attachments[obj.sha256].id
+        if attachment_id in existing:
+            continue
+        db.add(
+            ProductImage(
+                product_id=product.id,
+                attachment_id=attachment_id,
+                sort=next_sort + added,
+                is_cover=not has_cover and added == 0,
+            )
+        )
+        existing.add(attachment_id)
+        added += 1
+    return added
+
+
+async def _scene_bindings(db: AsyncSession, product_id: UUID) -> dict[UUID, tuple[int, bool]]:
+    """product_scene_image 的主键是 (product_id, scene_image_id)，软删除行也在表里。
+
+    所以「重新绑定」不能直接 INSERT —— 同一对主键会撞 PK，必须把软删除行恢复。
+    """
+    rows = (
+        await db.execute(
+            select(
+                product_scene_image.c.scene_image_id,
+                product_scene_image.c.sort,
+                product_scene_image.c.is_deleted,
+            ).where(product_scene_image.c.product_id == product_id)
+        )
+    ).all()
+    return {
+        row.scene_image_id: (row.sort or 0, bool(row.is_deleted))
+        for row in rows
+    }
+
+
+async def _bind_scene(
+    db: AsyncSession, product_id: UUID, scene_image_id: UUID, *, sort: int, known: bool
+) -> None:
+    if known:
+        await db.execute(
+            product_scene_image.update()
+            .where(
+                product_scene_image.c.product_id == product_id,
+                product_scene_image.c.scene_image_id == scene_image_id,
+            )
+            .values(is_deleted=False, deleted_at=None, sort=sort)
+        )
+        return
+    await db.execute(
+        product_scene_image.insert().values(
+            product_id=product_id, scene_image_id=scene_image_id, sort=sort
+        )
+    )
+
+
+async def _replace_product_scenes(
+    db: AsyncSession, product: Product, scenes: list, scene_images: dict
+) -> None:
+    if not scenes:
+        return
+    bindings = await _scene_bindings(db, product.id)
+    desired = [scene_images[obj.sha256].id for obj in scenes]
+    for index, scene_image_id in enumerate(desired):
+        await _bind_scene(
+            db, product.id, scene_image_id, sort=index, known=scene_image_id in bindings
+        )
+    keep = set(desired)
+    for scene_image_id, (_sort, is_deleted) in bindings.items():
+        if scene_image_id in keep or is_deleted:
+            continue
+        await db.execute(
+            product_scene_image.update()
+            .where(
+                product_scene_image.c.product_id == product.id,
+                product_scene_image.c.scene_image_id == scene_image_id,
+            )
+            .values(is_deleted=True, deleted_at=func.now())
+        )
+
+
+async def _append_product_scenes(
+    db: AsyncSession, product: Product, scenes: list, scene_images: dict
+) -> int:
+    if not scenes:
+        return 0
+    bindings = await _scene_bindings(db, product.id)
+    active = {key for key, (_sort, is_deleted) in bindings.items() if not is_deleted}
+    next_sort = max((sort for sort, _ in bindings.values()), default=-1) + 1
+    added = 0
+    for obj in scenes:
+        scene_image_id = scene_images[obj.sha256].id
+        if scene_image_id in active:
+            continue
+        await _bind_scene(
+            db, product.id, scene_image_id, sort=next_sort + added, known=scene_image_id in bindings
+        )
+        active.add(scene_image_id)
+        added += 1
+    return added
+
+
+def _tag_type_key(tag_type: str | None) -> str:
+    return (tag_type or "").strip().lower()
+
+
+async def _load_tag_index(
+    db: AsyncSession,
+) -> tuple[dict[tuple[str, str], UUID], dict[str, list[UUID]]]:
+    """标签查找表：先按 (名称, 类型) 精确命中，再按名称兜底。
+
+    名称兜底是有意为之：表格里只写「摩耳」而库里已有同名 series 标签时，应当
+    复用那一条，而不是再建一个无类型的同名标签。
+    """
+    rows = (
+        await db.execute(
+            select(Tag.id, Tag.tag_name, Tag.tag_type)
+            .where(Tag.is_deleted.is_(False))
+            .order_by(Tag.create_time, Tag.id)
+        )
+    ).all()
+    by_key: dict[tuple[str, str], UUID] = {}
+    by_name: dict[str, list[UUID]] = {}
+    for row in rows:
+        by_key[(row.tag_name, _tag_type_key(row.tag_type))] = row.id
+        by_name.setdefault(row.tag_name, []).append(row.id)
+    return by_key, by_name
+
+
+def _resolve_tag_id(
+    index: tuple[dict[tuple[str, str], UUID], dict[str, list[UUID]]],
+    name: str,
+    type_hint: str | None,
+) -> UUID | None:
+    by_key, by_name = index
+    if type_hint is not None:
+        return by_key.get((name, _tag_type_key(type_hint)))
+    ids = by_name.get(name)
+    return ids[0] if ids else None
+
+
+def _normalize_new_tag_type(raw: str | None) -> str | None:
+    """导入参数里的「新标签类型」：series 或 none（空 = 不分组）。"""
+    value = (raw or "").strip().lower()
+    if value in {"", "none", "null", "no", "off"}:
+        return None
+    return value if re.fullmatch(r"[a-z][a-z0-9_-]{0,15}", value) else "series"
+
+
+# ---------------------------------------------------------------------------
+# 产品编号别名：103800022 ↔ P-103800022
+#
+# 生产里同一个产品被先后录成了带前缀与不带前缀两条，只看精确 product_no 会让
+# 「覆盖」变成新建第二条。这里只识别「前导 P- 与无前导 P-」这一种关系：比较时
+# 忽略大小写与首尾空格，但绝不改写库里实际存储的编号。
+# ---------------------------------------------------------------------------
+_PRODUCT_NO_ALIAS_PREFIX = "p-"
+ALIAS_ACTIONS = frozenset({"overwrite_alias", "create_new"})
+ALIAS_RISK_SAFE = "safe"
+ALIAS_RISK_HIGH = "high"
+
+
+def _normalize_product_no(value: str | None) -> str:
+    """仅用于比较的产品编号键：去首尾空格 + 忽略大小写。"""
+    return (value or "").strip().casefold()
+
+
+def _product_no_alias_key(value: str | None) -> str:
+    """别名比较键：在 ``_normalize_product_no`` 之上再去掉前导 ``P-``。"""
+    key = _normalize_product_no(value)
+    if key.startswith(_PRODUCT_NO_ALIAS_PREFIX):
+        key = key[len(_PRODUCT_NO_ALIAS_PREFIX) :].strip()
+    return key
+
+
+def _normalize_product_name(value: str | None) -> str:
+    """产品名称规范化：全角转半角、忽略大小写与所有空白。"""
+    return "".join(unicodedata.normalize("NFKC", value or "").casefold().split())
+
+
+async def _alias_products_by_key(
+    db: AsyncSession, alias_keys: set[str]
+) -> dict[str, list[Product]]:
+    """按别名键取候选产品（含已软删除，用于把「已删除」判成高风险）。
+
+    用 ``lower(trim(product_no))`` 在库里做一次粗筛，再在 Python 里按别名键精确
+    归类；这样既能容忍存储侧的空白/大小写差异，又不需要为编号建函数索引。
+    """
+    if not alias_keys:
+        return {}
+    variants = set(alias_keys) | {_PRODUCT_NO_ALIAS_PREFIX + key for key in alias_keys}
+    result = await db.execute(
+        select(Product)
+        .where(func.lower(func.trim(Product.product_no)).in_(variants))
+        .order_by(Product.create_time, Product.id)
+    )
+    grouped: dict[str, list[Product]] = {}
+    for product in result.scalars().all():
+        key = _product_no_alias_key(product.product_no)
+        if key in alias_keys:
+            grouped.setdefault(key, []).append(product)
+    return grouped
+
+
+def _classify_alias(
+    fields: RowFields, candidates: list[Product]
+) -> dict[str, Any] | None:
+    """判断一行与现有产品的别名关系。没有候选返回 None。
+
+    只有「候选唯一、未删除、名称规范化后相同」才算安全；其余一律高风险，
+    绝不允许自动覆盖。
+    """
+    if not candidates:
+        return None
+    deleted = [product for product in candidates if product.is_deleted]
+    active = [product for product in candidates if not product.is_deleted]
+    numbers = "、".join(product.product_no for product in candidates)
+    if deleted:
+        return {
+            "risk": ALIAS_RISK_HIGH,
+            "reason": f"别名编号对应的产品已删除（{numbers}），不能自动覆盖",
+            "product": deleted[0] if len(candidates) == 1 else None,
+            "candidate_numbers": numbers,
+        }
+    if len(active) != 1:
+        return {
+            "risk": ALIAS_RISK_HIGH,
+            "reason": f"别名候选不唯一（{len(active)} 个：{numbers}），不能自动覆盖",
+            "product": None,
+            "candidate_numbers": numbers,
+        }
+    product = active[0]
+    incoming_name = _normalize_product_name(fields.product_name)
+    existing_name = _normalize_product_name(product.product_name)
+    if not incoming_name or incoming_name != existing_name:
+        return {
+            "risk": ALIAS_RISK_HIGH,
+            "reason": (
+                f"名称不一致（表内「{fields.product_name or ''}」/ "
+                f"系统内「{product.product_name or ''}」），不能自动覆盖"
+            ),
+            "product": product,
+            "candidate_numbers": product.product_no,
+        }
+    return {
+        "risk": ALIAS_RISK_SAFE,
+        "reason": "名称规范化后一致，可按别名覆盖并保留原产品 ID",
+        "product": product,
+        "candidate_numbers": product.product_no,
+    }
+
+
+def _ensure_alias_choice(
+    meta: dict[str, Any],
+    *,
+    mode: str,
+    alias_action: str | None,
+    row_decisions: dict[int, str],
+) -> None:
+    """在消费暂存 token 之前拒绝「没选别名处理方式」的提交。
+
+    预检已把冲突行写进 meta，所以这里不用重新解析上传包；返回 409 时 token
+    仍然可用，用户改选后可以直接重提，不必再传一次几百兆的包。
+    """
+    if mode == "skip":
+        # skip 的语义就是「已存在的一律不动」，别名行同样跳过，无需额外选择。
+        return
+    try:
+        alias_rows = [int(row) for row in (meta.get("alias_rows") or [])]
+    except (TypeError, ValueError):
+        return
+    if not alias_rows:
+        return
+    safe_rows = {int(row) for row in (meta.get("alias_safe_rows") or [])}
+    unresolved: list[int] = []
+    for row in alias_rows:
+        action = row_decisions.get(row) or alias_action
+        if mode == "create":
+            if action != "create_new":
+                unresolved.append(row)
+            continue
+        if action == "overwrite_alias":
+            # 全局「按别名覆盖」只覆盖安全行；高风险行必须逐行确认。
+            if row in safe_rows or row in row_decisions:
+                continue
+            unresolved.append(row)
+        elif action is None:
+            unresolved.append(row)
+    if not unresolved:
+        return
+    high_risk = [row for row in unresolved if row not in safe_rows]
+    if alias_action == "overwrite_alias" and high_risk:
+        msg = (
+            f"有 {len(high_risk)} 行别名冲突风险较高（名称不同 / 候选不唯一 / "
+            "产品已删除），不能按别名自动覆盖。请逐行确认，或改选「作为新产品创建」。"
+        )
+    elif mode == "create":
+        msg = (
+            f"有 {len(unresolved)} 行产品编号存在别名冲突（只差前导 P-）。"
+            "create 模式只能选择「作为新产品创建」，不会改动已有产品。"
+        )
+    else:
+        msg = (
+            f"有 {len(unresolved)} 行产品编号存在别名冲突（只差前导 P-）。"
+            "请明确选择：按别名覆盖（写入原产品 ID）或作为新产品创建。"
+        )
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "code": 40903,
+            "msg": msg,
+            "alias_rows": unresolved[: settings.PRODUCT_IMPORT_CONFLICT_LIMIT],
+            "alias_conflict_count": len(alias_rows),
+            "alias_high_risk_rows": high_risk[: settings.PRODUCT_IMPORT_CONFLICT_LIMIT],
+        },
+    )
+
+
+async def _product_backup_record(db: AsyncSession, product: Product) -> dict[str, Any]:
+    """覆盖前的产品原值 + 图片绑定（附件 id 不变，恢复时按原顺序重建）。"""
+    image_ids = (
+        await db.execute(
+            select(ProductImage.attachment_id)
+            .where(ProductImage.product_id == product.id, ProductImage.is_deleted.is_(False))
+            .order_by(ProductImage.sort, ProductImage.create_time)
+        )
+    ).scalars().all()
+    return {
+        "product_id": str(product.id),
+        "product_no": product.product_no,
+        "fields": {
+            field: getattr(product, field)
+            for field in (*_IMPORT_WRITABLE_FIELDS, "brand_id", "supplier_id", "category_id")
+        },
+        "image_attachment_ids": [str(value) for value in image_ids],
+    }
+
+
+async def _run_import(
+    db: AsyncSession,
+    stream,
+    *,
+    mode: str = "create",
+    report_skipped_as_failure: bool = False,
+    backup: bool = True,
+    new_tag_type: str = "series",
+    alias_action: str | None = None,
+    alias_decisions: dict[int, str] | None = None,
+) -> dict:
+    """批量导入的执行体（旧 ``/import`` 与新的 ``/import/commit`` 共用）。
+
+    ``mode`` 决定「编号已存在」怎么处理：
+
+    * ``create``    —— 报错（旧行为）
+    * ``skip``      —— 跳过，计入 ``skipped_count``，产品零变化
+    * ``overwrite`` —— 原地更新：表格里有值的字段才覆盖，空单元格保留库里原值；
+                       图片 / 场景图 / 标签按表格整套替换
+    * ``append``    —— 只补空字段（库里为空才写），图片 / 场景图 / 标签追加
+
+    ``alias_action`` / ``alias_decisions`` 决定「编号只差前导 P-」时怎么处理：
+    未指定的别名冲突直接 409，绝不按名称自动合并；选择 ``overwrite_alias`` 时
+    写的是原产品 ID（产品编号保持库里存储的原值），选择 ``create_new`` 才新增。
+
+    覆盖 / 追加都**不改 product.id**，所以方案、报价、分享页指向的仍是同一个
+    产品行；产品事实快照也不会因为改名/改价而回填到历史方案里。
+    """
+    if mode not in IMPORT_MODES:
+        raise HTTPException(status_code=422, detail={"code": 42201, "msg": f"未知导入模式: {mode}"})
+    if alias_action is not None and alias_action not in ALIAS_ACTIONS:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": 42202, "msg": "alias_action 只能是 overwrite_alias / create_new"},
+        )
+    row_decisions = dict(alias_decisions or {})
+    invalid_decisions = set(row_decisions.values()) - ALIAS_ACTIONS
+    if invalid_decisions:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": 42202,
+                "msg": "alias_decisions.action 只能是 overwrite_alias / create_new",
+            },
+        )
+    if mode == "create" and alias_action == "overwrite_alias":
+        raise HTTPException(
+            status_code=422,
+            detail={"code": 42202, "msg": "create 模式不能按别名覆盖，请改用 overwrite / append"},
+        )
+
     # UploadFile 的底层就是个临时文件（Starlette 超过 1MB 就落盘），所以体积用 seek
     # 量、字节交给 load_bundle 按需读：一个 259MB 的包不该先在内存里躺成一份 bytes，
     # 再由 zipfile 解成第二份几百兆。
-    upload = file.file
-    upload.seek(0, os.SEEK_END)
-    size = upload.tell()
-    upload.seek(0)
+    stream.seek(0, os.SEEK_END)
+    size = stream.tell()
+    stream.seek(0)
+    if size <= 0:
+        raise HTTPException(status_code=400, detail={"code": 40003, "msg": "上传的文件是空的"})
     if size > settings.PRODUCT_IMPORT_MAX_FILE_BYTES:
         raise HTTPException(
             status_code=400,
@@ -1328,7 +2079,7 @@ async def import_products(
     # load_bundle 是靠里面有没有 xl/workbook.xml 区分的。
     try:
         bundle = load_bundle(
-            upload,
+            stream,
             max_image_bytes=settings.PRODUCT_IMPORT_MAX_IMAGE_BYTES,
             max_total_bytes=settings.PRODUCT_IMPORT_MAX_FILE_BYTES,
         )
@@ -1392,42 +2143,117 @@ async def import_products(
             Category.category_name,
             {f.category_name for f in parsed if f.category_name},
         )
-        tag_map = await _name_to_id(db, Tag, Tag.tag_name, {t for f in parsed for t in f.tag_names})
+        tag_index = await _load_tag_index(db)
 
-        # 编号查重一次查完。老实现是每行一条 SELECT，两千行就是两千个来回。
-        taken: set[str] = set()
+        # 编号查重一次查完，并把整行取回：覆盖 / 追加要用现有值判断「单元格空着」。
+        existing: dict[str, Product] = {}
         wanted = {f.product_no for f in parsed if f.product_no}
         if wanted:
             found = await db.execute(
-                select(Product.product_no).where(
+                select(Product).where(
                     Product.product_no.in_(wanted), Product.is_deleted.is_(False)
                 )
             )
-            taken = {value for (value,) in found.all()}
+            existing = {product.product_no: product for product in found.scalars().all()}
+
+        # 别名候选（103800022 ↔ P-103800022）：同样一次查完，含已删除行。
+        alias_map = await _alias_products_by_key(
+            db, {_product_no_alias_key(value) for value in wanted}
+        )
 
         # 先把「这行能不能进库」判完，再去动图片：解析不了的行没必要为它下载/上传图片。
         failures: list[dict[str, Any]] = []
-        todo: list[tuple[ProductRow, RowFields, dict[str, UUID]]] = []
-        missing_tags: set[str] = set()
+        todo: list[
+            tuple[ProductRow, RowFields, dict[str, UUID], Product | None, str, str, str]
+        ] = []
         seen: set[str] = set()
+        seen_alias_keys: set[str] = set()
+        skipped_count = 0
+        unresolved_alias: list[dict[str, Any]] = []
+        alias_created_count = 0
+        alias_updated_count = 0
+        alias_new_notes: list[str] = []
         for row, fields in zip(sheet.rows, parsed, strict=True):
             reasons = list(fields.errors)
             refs: dict[str, UUID] = {}
+            current = existing.get(fields.product_no) if fields.product_no else None
+            alias_info: dict[str, Any] | None = None
+            alias_key = _product_no_alias_key(fields.product_no)
+            if current is None and fields.product_no and not reasons:
+                alias_info = _classify_alias(fields, alias_map.get(alias_key, []))
+            action = ""
+            if alias_info is not None:
+                action = row_decisions.get(row.excel_row, "")
+                if not action and alias_action == "create_new":
+                    action = "create_new"
+                elif (
+                    not action
+                    and alias_action == "overwrite_alias"
+                    and alias_info["risk"] == ALIAS_RISK_SAFE
+                ):
+                    action = "overwrite_alias"
+            target = "update" if current is not None else "create"
+            effective_mode = mode
+            if action == "overwrite_alias" and alias_info is not None:
+                target = "update"
+                effective_mode = "overwrite"
             if not reasons:
-                if fields.product_no in seen:
+                if fields.product_no in seen or (
+                    fields.product_no and alias_key in seen_alias_keys
+                ):
                     reasons.append("表里有重复的产品编号，只导入第一次出现的那行")
-                elif fields.product_no in taken:
-                    reasons.append("编号已存在，已跳过" if skip_if_exists else "产品编号已存在")
-                # brand_id/supplier_id/category_id 在库里都是 NOT NULL，缺一个这行就进不去。
-                # 主数据由各自的管理页维护，导入不替用户新建：一个错别字凭空造出个品牌，
-                # 比这行导不进去更难收拾。
+                elif current is not None:
+                    if mode == "skip":
+                        if report_skipped_as_failure:
+                            reasons.append("编号已存在，已跳过")
+                        else:
+                            skipped_count += 1
+                            seen.add(fields.product_no)
+                            continue
+                    elif mode == "create":
+                        reasons.append("产品编号已存在")
+                elif alias_info is not None:
+                    if mode == "skip":
+                        # skip 的语义就是「已存在的一律不动」：别名同样视为已存在。
+                        skipped_count += 1
+                        seen.add(fields.product_no)
+                        seen_alias_keys.add(alias_key)
+                        continue
+                    if not action:
+                        unresolved_alias.append(
+                            {
+                                "row": row.excel_row,
+                                "product_no": fields.product_no,
+                                "alias_product_no": alias_info["candidate_numbers"],
+                                "risk": alias_info["risk"],
+                                "reason": alias_info["reason"],
+                            }
+                        )
+                        reasons.append("产品编号存在别名冲突，尚未选择处理方式")
+                    elif action == "overwrite_alias" and (
+                        alias_info["product"] is None or alias_info["product"].is_deleted
+                    ):
+                        # 候选不唯一 / 唯一候选已删除时没有可安全写入的原产品。
+                        reasons.append(
+                            f"别名冲突无法确定可覆盖的原产品：{alias_info['reason']}"
+                        )
+                    elif action == "overwrite_alias" and alias_info["risk"] == ALIAS_RISK_HIGH:
+                        # 高风险（名称不同 / 候选不唯一 / 已删除）绝不自动覆盖；
+                        # 只有逐行明确选了 overwrite_alias 才放行。
+                        if row_decisions.get(row.excel_row) != "overwrite_alias":
+                            reasons.append(
+                                f"别名冲突风险高，未覆盖：{alias_info['reason']}"
+                            )
+                # 品牌/供应商/分类：新建时必须给全（库里是 NOT NULL）；更新时留空表示
+                # 「保留原值」，给了名字但系统里没有才算这一行失败。
                 for label, name, mapping, key in (
                     ("品牌", fields.brand_name, brand_map, "brand_id"),
                     ("供应商", fields.supplier_name, supplier_map, "supplier_id"),
                     ("分类", fields.category_name, category_map, "category_id"),
                 ):
                     if not name:
-                        reasons.append(f"{label}为空（产品必须挂在{label}下）")
+                        if target == "create":
+                            reasons.append(f"{label}为空（产品必须挂在{label}下）")
                         continue
                     ident = mapping.get(name)
                     if ident is None:
@@ -1443,13 +2269,57 @@ async def import_products(
                     }
                 )
                 continue
+            if action == "overwrite_alias" and alias_info is not None:
+                current = alias_info["product"]
+            elif action == "create_new" and alias_info is not None:
+                alias_new_notes.append(
+                    f"第 {row.excel_row} 行 {fields.product_no}：按你的选择作为新产品创建，"
+                    f"系统里仍保留同编号别名产品 {alias_info['candidate_numbers']}"
+                )
             seen.add(fields.product_no)
-            missing_tags.update(name for name in fields.tag_names if name not in tag_map)
+            if fields.product_no:
+                seen_alias_keys.add(alias_key)
             notes.extend(f"第 {fields.excel_row} 行：{note}" for note in fields.notes)
-            todo.append((row, fields, refs))
+            todo.append((row, fields, refs, current, target, effective_mode, action))
 
-        if missing_tags:
-            notes.append("这些标签系统里没有，已忽略：" + "、".join(sorted(missing_tags)))
+        if unresolved_alias:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": 40903,
+                    "msg": (
+                        f"这次导入有 {len(unresolved_alias)} 行产品编号存在别名冲突"
+                        "（只差前导 P-）。请明确选择：按别名覆盖（写入原产品 ID）"
+                        "或作为新产品创建。"
+                    ),
+                    "alias_conflicts": unresolved_alias[: settings.PRODUCT_IMPORT_CONFLICT_LIMIT],
+                    "alias_conflict_count": len(unresolved_alias),
+                },
+            )
+        notes.extend(alias_new_notes)
+
+        # 标签：命中已有标签就复用；没命中的按「单元格显式类型 > 导入参数默认类型」自动创建。
+        # 老实现只记一条「已忽略」，于是新系列（如摩耳）永远进不来。
+        default_tag_type = _normalize_new_tag_type(new_tag_type)
+        created_tag_names: list[str] = []
+        pending_tags: dict[tuple[str, str], str] = {}
+        for _row, fields, _refs, _current, _target, _mode, _action in todo:
+            for name, hint in fields.tag_specs:
+                if _resolve_tag_id(tag_index, name, hint) is not None:
+                    continue
+                effective_type = hint if hint is not None else default_tag_type
+                pending_tags.setdefault((name, _tag_type_key(effective_type)), name)
+        if pending_tags:
+            for name, type_key in pending_tags:
+                db.add(Tag(tag_name=name, tag_type=type_key or None))
+            await db.flush()
+            created_tag_names = sorted(set(pending_tags.values()))
+            tag_index = await _load_tag_index(db)
+            notes.append(
+                f"本次新建标签 {len(created_tag_names)} 个："
+                + "、".join(created_tag_names[:20])
+                + ("…" if len(created_tag_names) > 20 else "")
+            )
 
         uploaded_count = 0
         sources: set[str] = set()
@@ -1480,7 +2350,7 @@ async def import_products(
                 _ingest_row_media,
                 resolver,
                 uploader,
-                [(row, fields.product_no) for row, fields, _ in todo],
+                [(row, fields.product_no) for row, fields, *_rest in todo],
             )
             image_warnings.extend(media_warnings)
             uploaded_count = uploader.uploaded
@@ -1523,56 +2393,92 @@ async def import_products(
 
     empty: dict[str, Any] = {"cover": None, "images": [], "scenes": []}
     success = 0
+    created_count = 0
+    updated_count = 0
+    appended_count = 0
     image_count = 0
     scene_count = 0
-    for row, fields, refs in todo:
+    images_replaced = 0
+    images_appended = 0
+    backup_records: list[dict[str, Any]] = []
+    indexed_product_ids: list[UUID] = []
+    for row, fields, refs, current, target, effective_mode, alias_step in todo:
         buckets = per_row.get(row.excel_row, empty)
         cover = buckets["cover"]
         gallery = ([cover] if cover is not None else []) + buckets["images"]
         scenes = buckets["scenes"]
+        row_images = 0
+        row_scenes = 0
         # 一行一个 SAVEPOINT：撞了约束只回滚这一行，前面已经建好的产品照常保留。
         try:
             async with db.begin_nested():
-                product = Product(
-                    product_no=fields.product_no,
-                    product_name=fields.product_name,
-                    brand_id=refs["brand_id"],
-                    supplier_id=refs["supplier_id"],
-                    category_id=refs["category_id"],
-                    face_price=fields.face_price,
-                    cost_price=fields.cost_price,
-                    material=fields.material,
-                    specification=fields.specification,
-                    colors=fields.colors,
-                    description=fields.description,
-                    data_source=fields.data_source,
-                    stock_status=fields.stock_status,
-                    status=fields.status,
-                    completeness_status=fields.completeness_status,
-                )
-                db.add(product)
-                await db.flush()
-                for tag_name in fields.tag_names:
-                    tag_id = tag_map.get(tag_name)
-                    if tag_id is not None:
-                        db.add(ProductTag(product_id=product.id, tag_id=tag_id))
-                for index, obj in enumerate(gallery):
-                    db.add(
-                        ProductImage(
-                            product_id=product.id,
-                            attachment_id=attachments[obj.sha256].id,
-                            sort=index,
-                            is_cover=index == 0,
-                        )
+                if target == "create" or current is None:
+                    product = Product(
+                        product_no=fields.product_no,
+                        product_name=fields.product_name,
+                        brand_id=refs["brand_id"],
+                        supplier_id=refs["supplier_id"],
+                        category_id=refs["category_id"],
+                        face_price=fields.face_price,
+                        cost_price=fields.cost_price,
+                        material=fields.material,
+                        specification=fields.specification,
+                        colors=fields.colors,
+                        delivery_period=fields.delivery_period,
+                        description=fields.description,
+                        data_source=fields.data_source,
+                        stock_status=fields.stock_status,
+                        status=fields.status,
+                        completeness_status=fields.completeness_status,
                     )
-                for index, obj in enumerate(scenes):
-                    await db.execute(
-                        product_scene_image.insert().values(
-                            product_id=product.id,
-                            scene_image_id=scene_images[obj.sha256].id,
-                            sort=index,
+                    db.add(product)
+                    await db.flush()
+                    for tag_name, type_hint in fields.tag_specs:
+                        tag_id = _resolve_tag_id(tag_index, tag_name, type_hint)
+                        if tag_id is not None:
+                            db.add(ProductTag(product_id=product.id, tag_id=tag_id))
+                    for index, obj in enumerate(gallery):
+                        db.add(
+                            ProductImage(
+                                product_id=product.id,
+                                attachment_id=attachments[obj.sha256].id,
+                                sort=index,
+                                is_cover=index == 0,
+                            )
                         )
-                    )
+                    for index, obj in enumerate(scenes):
+                        await db.execute(
+                            product_scene_image.insert().values(
+                                product_id=product.id,
+                                scene_image_id=scene_images[obj.sha256].id,
+                                sort=index,
+                            )
+                        )
+                    row_images = len(gallery)
+                    row_scenes = len(scenes)
+                else:
+                    product = current
+                    # 覆盖前留一份原值：误点「覆盖」至少能凭 backup_id 把字段与图片
+                    # 绑定恢复回去（产品 id 不变，方案/报价引用不受影响）。
+                    if backup:
+                        backup_records.append(await _product_backup_record(db, product))
+                    _apply_product_fields(product, fields, refs, effective_mode)
+                    if effective_mode == "overwrite":
+                        await _replace_product_tags(db, product, fields, tag_index)
+                        row_images = await _replace_product_images(
+                            db, product, gallery, attachments
+                        )
+                        if scenes:
+                            await _replace_product_scenes(db, product, scenes, scene_images)
+                        row_scenes = len(scenes)
+                    else:
+                        await _append_product_tags(db, product, fields, tag_index)
+                        row_images = await _append_product_images(
+                            db, product, gallery, attachments
+                        )
+                        row_scenes = await _append_product_scenes(
+                            db, product, scenes, scene_images
+                        )
                 await db.flush()
         except SQLAlchemyError as exc:
             logger.warning("批量导入第 %s 行入库失败", row.excel_row, exc_info=True)
@@ -1585,8 +2491,35 @@ async def import_products(
             )
             continue
         success += 1
-        image_count += len(gallery)
-        scene_count += len(scenes)
+        if target == "create" or current is None:
+            created_count += 1
+        elif effective_mode == "overwrite":
+            updated_count += 1
+            images_replaced += row_images
+        else:
+            appended_count += 1
+            images_appended += row_images
+        if alias_step == "overwrite_alias":
+            alias_updated_count += 1
+        elif alias_step == "create_new":
+            alias_created_count += 1
+        image_count += row_images
+        scene_count += row_scenes
+        indexed_product_ids.append(product.id)
+
+    backup_id = None
+    if backup_records:
+        try:
+            backup_id = await asyncio.to_thread(
+                write_import_backup, backup_records, mode=mode
+            )
+        except OSError:
+            logger.warning("批量导入：覆盖前快照写入失败", exc_info=True)
+            notes.append("覆盖前的产品快照没能写入，本次覆盖不可回滚，请核对结果")
+
+    # 批量导入同样是「产品变更」：不重建卡片，导入的新品在 AI 选品里就查不到。
+    for product_id in dict.fromkeys(indexed_product_ids):
+        await enqueue_product_card(db, product_id)
 
     await db.commit()
     failures.sort(key=lambda item: item["row"])
@@ -1598,6 +2531,18 @@ async def import_products(
             "success_count": success,
             "fail_count": len(failures),
             "failures": failures,
+            "created_count": created_count,
+            "updated_count": updated_count,
+            "appended_count": appended_count,
+            "skipped_count": skipped_count,
+            "alias_updated_count": alias_updated_count,
+            "alias_created_count": alias_created_count,
+            "images_replaced": images_replaced,
+            "images_appended": images_appended,
+            "created_tags": len(created_tag_names),
+            "new_tag_names": _capped(created_tag_names),
+            "mode": mode,
+            "backup_id": backup_id,
             "notes": _capped(notes),
             "image_count": image_count,
             "scene_image_count": scene_count,
@@ -1609,3 +2554,418 @@ async def import_products(
             "blank_rows": sheet.blank_rows,
         },
     }
+
+
+class ImportAliasDecision(BaseModel):
+    """对单行别名冲突的明确决定（行号即表格里的 excel_row）。"""
+
+    row: int
+    action: str
+
+
+class ImportCommitRequest(BaseModel):
+    """预检通过后的提交参数。"""
+
+    token: str
+    mode: str = "overwrite"
+    backup: bool = True
+    # 表格里没写类型的「新标签」归到哪一类：series（默认）或 none。
+    # 单元格里写了「系列:摩耳」这类显式类型的，以单元格为准。
+    new_tag_type: str = "series"
+    # 别名冲突（103800022 ↔ P-103800022）的处理方式：不选就拒绝提交。
+    alias_action: str | None = None
+    alias_decisions: list[ImportAliasDecision] = []
+
+
+@router.post("/import", dependencies=[Depends(PermissionChecker("product:import"))])
+@audit_action("product_import", module="products")
+async def import_products(
+    request: Request,
+    file: UploadFile = File(...),
+    skip_if_exists: bool = Query(False, alias="skipIfExists"),
+    db: AsyncSession = Depends(get_db),
+):
+    """批量导入产品（旧入口，保留兼容）。
+
+    勾 skipIfExists 等价于新的 skip 模式；否则是 create 模式（编号已存在即失败）。
+    新前端走 ``/import/preflight`` -> ``/import/commit``，能先看清冲突再决定
+    覆盖 / 追加 / 跳过。
+    """
+    return await _run_import(
+        db,
+        file.file,
+        mode="skip" if skip_if_exists else "create",
+        # 旧前端把「已跳过」显示在失败明细里，保留这条兼容行为
+        report_skipped_as_failure=skip_if_exists,
+    )
+
+
+@router.post(
+    "/import/preflight", dependencies=[Depends(PermissionChecker("product:import"))]
+)
+@audit_action("product_import_preflight", module="products")
+async def preflight_import(
+    request: Request,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """只解析、只查重，不写库：先让用户看清这次重传会发生什么。
+
+    图片阶段一律不做（不下载、不解析字节）：预检只需要知道「这行有几张图」，
+    为了数个数把一个 259MB 的包里的图片全部取一遍并不划算。真正的出图与上传
+    留到 commit。
+    """
+    user_id = str(getattr(request.state, "user_id", "") or "")
+    if not user_id:
+        raise HTTPException(status_code=401, detail={"code": 40101, "msg": "请先登录"})
+
+    # 预检是唯一会持续产生暂存目录的入口，用它顺带做一次限频清理（每小时最多一次），
+    # 免得为了 TTL 再单独引一个 cron；容器重启后也能自愈。
+    _maybe_cleanup_staging()
+
+    try:
+        meta = stage_upload(
+            file.file,
+            file_name=file.filename or "products.xlsx",
+            user_id=user_id,
+            max_bytes=settings.PRODUCT_IMPORT_MAX_FILE_BYTES,
+        )
+    except StagingError as exc:
+        raise HTTPException(
+            status_code=exc.status_code, detail={"code": exc.code, "msg": exc.message}
+        ) from exc
+
+    token = meta["token"]
+    try:
+        upload_path, meta = load_staged(token, user_id=user_id)
+        with upload_path.open("rb") as stream:
+            bundle = load_bundle(
+                stream,
+                max_image_bytes=settings.PRODUCT_IMPORT_MAX_IMAGE_BYTES,
+                max_total_bytes=settings.PRODUCT_IMPORT_MAX_FILE_BYTES,
+            )
+            try:
+                sheet = read_product_sheet(bundle.xlsx)
+                bundle_warnings = list(bundle.warnings)
+            finally:
+                bundle.close()
+    except StagingError as exc:
+        discard_staged(token, user_id=user_id)
+        raise HTTPException(
+            status_code=exc.status_code, detail={"code": exc.code, "msg": exc.message}
+        ) from exc
+    except MediaError as exc:
+        discard_staged(token, user_id=user_id)
+        raise HTTPException(status_code=400, detail={"code": 40003, "msg": str(exc)}) from exc
+    except SheetError as exc:
+        discard_staged(token, user_id=user_id)
+        raise HTTPException(status_code=400, detail={"code": 40001, "msg": str(exc)}) from exc
+    except Exception:
+        discard_staged(token, user_id=user_id)
+        raise
+
+    if len(sheet.rows) > settings.PRODUCT_IMPORT_MAX_ROWS:
+        discard_staged(token, user_id=user_id)
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": 40004,
+                "msg": f"表里有 {len(sheet.rows)} 行数据，超过单次上限 "
+                f"{settings.PRODUCT_IMPORT_MAX_ROWS} 行，请拆分后导入",
+            },
+        )
+
+    notes: list[str] = list(sheet.warnings)
+    if sheet.unknown_headers:
+        notes.append("这些列没认出来，已忽略：" + "、".join(sheet.unknown_headers))
+
+    parsed = [parse_row(row) for row in sheet.rows]
+    brand_map = await _name_to_id(
+        db, Brand, Brand.brand_name, {f.brand_name for f in parsed if f.brand_name}
+    )
+    supplier_map = await _name_to_id(
+        db, Supplier, Supplier.supplier_name, {f.supplier_name for f in parsed if f.supplier_name}
+    )
+    category_map = await _name_to_id(
+        db, Category, Category.category_name, {f.category_name for f in parsed if f.category_name}
+    )
+
+    existing: dict[str, tuple[UUID, str, int]] = {}
+    wanted = {f.product_no for f in parsed if f.product_no}
+    # 别名候选一次查完（含已软删除：删掉的产品同样不能被自动覆盖）。
+    alias_map = await _alias_products_by_key(
+        db, {_product_no_alias_key(value) for value in wanted}
+    )
+    exact_rows = []
+    if wanted:
+        exact_rows = (
+            await db.execute(
+                select(Product.id, Product.product_no, Product.product_name).where(
+                    Product.product_no.in_(wanted), Product.is_deleted.is_(False)
+                )
+            )
+        ).all()
+    image_counts: dict[UUID, int] = {}
+    product_ids = [row.id for row in exact_rows]
+    product_ids.extend(p.id for products in alias_map.values() for p in products)
+    if product_ids:
+        count_rows = (
+            await db.execute(
+                select(ProductImage.product_id, func.count())
+                .where(
+                    ProductImage.product_id.in_(product_ids),
+                    ProductImage.is_deleted.is_(False),
+                )
+                .group_by(ProductImage.product_id)
+            )
+        ).all()
+        image_counts = {product_id: count for product_id, count in count_rows}
+    for row in exact_rows:
+        existing[row.product_no] = (row.id, row.product_name, image_counts.get(row.id, 0))
+
+    conflicts: list[dict[str, Any]] = []
+    alias_conflicts: list[dict[str, Any]] = []
+    invalid: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    seen_alias_keys: set[str] = set()
+    new_count = 0
+    existing_count = 0
+    invalid_count = 0
+    alias_safe_count = 0
+    alias_high_risk_count = 0
+    for row, fields in zip(sheet.rows, parsed, strict=True):
+        reasons = list(fields.errors)
+        is_existing = fields.product_no in existing
+        alias_key = _product_no_alias_key(fields.product_no)
+        alias_info = None
+        if not is_existing and fields.product_no and not reasons:
+            alias_info = _classify_alias(fields, alias_map.get(alias_key, []))
+        # 别名命中的产品已经在库里：允许靠原值补全主数据，和精确命中同样对待。
+        is_known = is_existing or alias_info is not None
+        if not reasons:
+            if fields.product_no in seen or (
+                fields.product_no and alias_key in seen_alias_keys
+            ):
+                reasons.append("表里有重复的产品编号，只导入第一次出现的那行")
+            else:
+                for label, name, mapping in (
+                    ("品牌", fields.brand_name, brand_map),
+                    ("供应商", fields.supplier_name, supplier_map),
+                    ("分类", fields.category_name, category_map),
+                ):
+                    if not name:
+                        # 已有产品可以靠原值补全，新建产品必须自己给全
+                        if not is_known:
+                            reasons.append(f"{label}为空（产品必须挂在{label}下）")
+                        continue
+                    if name not in mapping:
+                        reasons.append(f"{label}「{name}」系统里没有，请先建好再导入")
+        if reasons:
+            invalid_count += 1
+            invalid.append(
+                {
+                    "row": row.excel_row,
+                    "product_no": fields.product_no,
+                    "reason": "；".join(reasons),
+                }
+            )
+            continue
+        seen.add(fields.product_no)
+        if fields.product_no:
+            seen_alias_keys.add(alias_key)
+        if is_existing:
+            existing_count += 1
+            _, existing_name, image_count = existing[fields.product_no]
+            conflicts.append(
+                {
+                    "row": row.excel_row,
+                    "product_no": fields.product_no,
+                    "product_name": fields.product_name,
+                    "existing_name": existing_name,
+                    "existing_image_count": image_count,
+                }
+            )
+        elif alias_info is not None:
+            alias_product = alias_info["product"]
+            if alias_info["risk"] == ALIAS_RISK_SAFE:
+                alias_safe_count += 1
+            else:
+                alias_high_risk_count += 1
+            alias_conflicts.append(
+                {
+                    "row": row.excel_row,
+                    "product_no": fields.product_no,
+                    "product_name": fields.product_name,
+                    "alias_product_id": (
+                        str(alias_product.id) if alias_product is not None else None
+                    ),
+                    "alias_product_no": alias_info["candidate_numbers"],
+                    "existing_name": (
+                        alias_product.product_name if alias_product is not None else None
+                    ),
+                    "existing_image_count": (
+                        image_counts.get(alias_product.id, 0)
+                        if alias_product is not None
+                        else 0
+                    ),
+                    "risk": alias_info["risk"],
+                    "reason": alias_info["reason"],
+                }
+            )
+        else:
+            new_count += 1
+
+    limit = settings.PRODUCT_IMPORT_CONFLICT_LIMIT
+
+    # 把别名冲突行写进暂存元数据：commit 在消费 token 之前就能拒绝「未选择
+    # 别名处理方式」的提交，用户还能用同一个 token 重新选择，不必重传大包。
+    try:
+        update_staged_meta(
+            token,
+            user_id=user_id,
+            alias_conflict_count=len(alias_conflicts),
+            alias_rows=[item["row"] for item in alias_conflicts],
+            alias_safe_rows=[
+                item["row"] for item in alias_conflicts if item["risk"] == ALIAS_RISK_SAFE
+            ],
+            alias_high_risk_rows=[
+                item["row"] for item in alias_conflicts if item["risk"] == ALIAS_RISK_HIGH
+            ],
+        )
+    except StagingError:
+        logger.warning("导入预检：别名冲突元数据写入失败", exc_info=True)
+
+    # 预检里把「会被新建的标签」也列出来：用户在弹窗就能看到「摩耳」将被创建，
+    # 并选择新标签归入「系列」（默认）还是「未分组」。这里不写库。
+    tag_index = await _load_tag_index(db)
+    new_tags: list[dict[str, Any]] = []
+    seen_new_tags: set[tuple[str, str]] = set()
+    for _row, fields in zip(sheet.rows, parsed, strict=True):
+        if fields.errors:
+            continue
+        for name, hint in fields.tag_specs:
+            if _resolve_tag_id(tag_index, name, hint) is not None:
+                continue
+            effective = hint if hint is not None else "series"
+            key = (name, _tag_type_key(effective))
+            if key in seen_new_tags:
+                continue
+            seen_new_tags.add(key)
+            new_tags.append({"name": name, "tag_type": effective})
+
+    return {
+        "code": 200,
+        "data": {
+            "token": token,
+            "expires_at": datetime.datetime.fromtimestamp(
+                float(meta["expires_at"]), datetime.UTC
+            ).isoformat(),
+            "file_name": meta["file_name"],
+            "size": meta["size"],
+            "sha256": meta["sha256"],
+            "header_row": sheet.header_row,
+            "total_rows": len(sheet.rows),
+            "new_count": new_count,
+            "existing_count": existing_count,
+            "exact_existing_count": existing_count,
+            "alias_conflict_count": len(alias_conflicts),
+            "alias_safe_count": alias_safe_count,
+            "alias_high_risk_count": alias_high_risk_count,
+            "invalid_count": invalid_count,
+            "new_tags": new_tags[:limit],
+            "new_tag_count": len(new_tags),
+            "new_tag_type_default": "series",
+            "conflicts": conflicts[:limit],
+            "conflicts_truncated": len(conflicts) > limit,
+            "alias_conflicts": alias_conflicts[:limit],
+            "alias_conflicts_truncated": len(alias_conflicts) > limit,
+            "invalid": invalid[:limit],
+            "invalid_truncated": len(invalid) > limit,
+            "notes": _capped(notes),
+            "image_warnings": _capped(bundle_warnings),
+            "unknown_headers": sheet.unknown_headers,
+        },
+    }
+
+
+@router.post("/import/commit", dependencies=[Depends(PermissionChecker("product:import"))])
+@audit_action("product_import_commit", module="products")
+async def commit_import(
+    request: Request,
+    payload: ImportCommitRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """按用户选择的模式真正写库（覆盖 / 追加 / 跳过）。"""
+    user_id = str(getattr(request.state, "user_id", "") or "")
+    if not user_id:
+        raise HTTPException(status_code=401, detail={"code": 40101, "msg": "请先登录"})
+
+    mode = (payload.mode or "").strip().lower()
+    if mode not in {"overwrite", "append", "skip"}:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": 42201, "msg": "mode 只能是 overwrite / append / skip"},
+        )
+
+    alias_action = (payload.alias_action or "").strip().lower() or None
+    if alias_action is not None and alias_action not in ALIAS_ACTIONS:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": 42202, "msg": "alias_action 只能是 overwrite_alias / create_new"},
+        )
+    if mode == "create" and alias_action == "overwrite_alias":
+        raise HTTPException(
+            status_code=422,
+            detail={"code": 42202, "msg": "create 模式不能按别名覆盖，请改用 overwrite / append"},
+        )
+    row_decisions: dict[int, str] = {}
+    for decision in payload.alias_decisions:
+        if decision.action not in ALIAS_ACTIONS:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": 42202,
+                    "msg": "alias_decisions.action 只能是 overwrite_alias / create_new",
+                },
+            )
+        row_decisions[decision.row] = decision.action
+
+    # 先只读暂存元数据：别名没选就 409，且不消费 token，用户改选后可原样重提。
+    try:
+        _upload_path, meta = load_staged(payload.token, user_id=user_id)
+    except StagingError as exc:
+        raise HTTPException(
+            status_code=exc.status_code, detail={"code": exc.code, "msg": exc.message}
+        ) from exc
+    _ensure_alias_choice(
+        meta, mode=mode, alias_action=alias_action, row_decisions=row_decisions
+    )
+
+    try:
+        upload_path, _meta = consume_staged(payload.token, user_id=user_id)
+    except StagingError as exc:
+        raise HTTPException(
+            status_code=exc.status_code, detail={"code": exc.code, "msg": exc.message}
+        ) from exc
+
+    with upload_path.open("rb") as stream:
+        return await _run_import(
+            db,
+            stream,
+            mode=mode,
+            backup=payload.backup,
+            new_tag_type=payload.new_tag_type,
+            alias_action=alias_action,
+            alias_decisions=row_decisions,
+        )
+
+
+@router.delete(
+    "/import/preflight/{token}",
+    dependencies=[Depends(PermissionChecker("product:import"))],
+)
+async def cancel_import_preflight(request: Request, token: str):
+    """取消预检：立刻删掉暂存文件，释放磁盘。"""
+    user_id = str(getattr(request.state, "user_id", "") or "")
+    discard_staged(token, user_id=user_id)
+    return {"code": 200, "msg": "success"}

@@ -62,7 +62,7 @@ describe('Quality.vue', () => {
               list: [
                 {
                   id: '1',
-                  product_no: 'EMD89R.320190',
+                  product_no: 'PIM89R.320190',
                   product_name: '会议桌',
                   completeness_status: 'pending',
                   face_price: 99999,
@@ -97,7 +97,7 @@ describe('Quality.vue', () => {
     expect(wrapper.text()).toContain('待核价')
 
     // Table content
-    expect(wrapper.text()).toContain('EMD89R.320190')
+    expect(wrapper.text()).toContain('PIM89R.320190')
     expect(wrapper.text()).toContain('会议桌')
     expect(wrapper.text()).toContain('pilot')
 

@@ -222,7 +222,7 @@ function removeUpload(id: string) {
   flex-direction: column;
   gap: 4px;
   padding: 8px 12px;
-  background: #fff;
+  background: var(--pim-surface);
   border: 1px solid var(--el-border-color-light);
   border-radius: 8px;
 }

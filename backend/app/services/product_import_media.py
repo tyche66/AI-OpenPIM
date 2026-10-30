@@ -308,9 +308,9 @@ class ImportBundle:
     def match_prefix(self, product_no: str) -> list[BundleFile]:
         """文件名以产品编号开头的图片，按文件名排序。
 
-        紧跟编号后面必须是分隔符（或中文字样）—— 否则 ``SUNON-001`` 会把
-        ``SUNON-0012.jpg``（另一个产品）也吃进来；只挡 ASCII 字母数字，是为了让
-        ``SUNON-001场景.jpg`` 这种中文后缀还能归上。
+        紧跟编号后面必须是分隔符（或中文字样）—— 否则 ``PILOT-001`` 会把
+        ``PILOT-0012.jpg``（另一个产品）也吃进来；只挡 ASCII 字母数字，是为了让
+        ``PILOT-001场景.jpg`` 这种中文后缀还能归上。
         """
         prefix = product_no.strip().lower()
         if not prefix:

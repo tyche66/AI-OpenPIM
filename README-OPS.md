@@ -33,7 +33,7 @@ cd /home/AI-PIM/OpenPIM && bash scripts/where-am-i.sh
 | | 生产 | 本地开发 | 集成测试 |
 | --- | --- | --- | --- |
 | 承载 | Docker Desktop 的 compose 栈（7 服务） | 本机 uvicorn / vite | 本机原生 PostgreSQL 18 |
-| 数据位置 | 命名卷 `richangpim_go_postgres_pg16_data_20260716` | 取决于 `DATABASE_URL` | 原生 PG18 集群 |
+| 数据位置 | 命名卷 `openpim_go_postgres_pg16_data_20260716` | 取决于 `DATABASE_URL` | 原生 PG18 集群 |
 | 库名 | `ai_pim` | `ai_pim` | `ai_pim_test` |
 | 宿主机能否直连库 | **不能**，5432 未发布，只能 `docker exec` | localhost:5432 | localhost:5432 |
 | 平时状态 | 常驻 | 按需 | **必须 down** |
@@ -177,9 +177,9 @@ export DOCKER_HOST=unix:///mnt/wsl/docker-desktop/shared-sockets/host-services/d
 
 # 1) 备份（迁移不可逆，这一步不能省）
 TS=$(date +%Y%m%dT%H%M%S)
-docker exec richangpim-postgres-1 pg_dump -U pim -d ai_pim -Fc -f /tmp/d.sqlc \
-  && docker cp richangpim-postgres-1:/tmp/d.sqlc "backups/pre_upgrade_${TS}.sqlc" \
-  && docker exec richangpim-postgres-1 rm -f /tmp/d.sqlc
+docker exec openpim-postgres-1 pg_dump -U pim -d ai_pim -Fc -f /tmp/d.sqlc \
+  && docker cp openpim-postgres-1:/tmp/d.sqlc "backups/pre_upgrade_${TS}.sqlc" \
+  && docker exec openpim-postgres-1 rm -f /tmp/d.sqlc
 
 # 2) 构建前端产物（含版本注入与 base '/admin/'），并记下它注入的那一套值
 bash scripts/build_frontends.sh          # 输出里有 APP_VERSION / BUILD_ID / GIT_COMMIT / BUILD_TIME
@@ -196,7 +196,7 @@ docker compose build backend nginx
 docker compose up -d --no-deps backend nginx
 
 # 5) 确认迁移已到 head（entrypoint 自动跑，这里只是核对）
-docker exec richangpim-backend-1 alembic current
+docker exec openpim-backend-1 alembic current
 
 # 6) 验收
 bash scripts/where-am-i.sh
@@ -214,8 +214,23 @@ curl -s --noproxy '*' http://127.0.0.1:888/api/v1/health   # version 必须是�
 `/api/v1/health` 变成 `"version":"dev"`；补一条 `docker compose up -d --no-deps backend`
 （带当时那一套 export）就恢复成当时的 `1.8.5` / `local-20260731T101832Z`，**不需要重建镜像**
 （env 覆盖镜像里的 ENV；而 `backend/Dockerfile` 的 ARG 在第 3~7 行，改 ARG 会让 apt/pip 层全部失效）。
-回滚：`docker compose build` 会留下上一版镜像（`docker images | grep richangpim`），
+回滚：`docker compose build` 会留下上一版镜像（`docker images | grep openpim`），
 `docker tag` 回去再 `up -d --no-deps <service>`；所以升级后先别清理镜像。
+
+
+## Worker 部署
+
+提醒 worker 与 backend 同镜像，通过 docker-compose 启动：
+
+```bash
+docker compose up -d worker
+docker compose up --scale worker=2  # 多实例
+```
+
+- 每 60s 扫描到期提醒并派发通知
+- 每 10 分钟执行一致性校正和升级检查
+- 健康检查：/tmp/worker_heartbeat 文件存在且 <180s
+- 多实例安全：FOR UPDATE SKIP LOCKED + Redis 锁
 
 ## 健康检查
 
@@ -264,9 +279,9 @@ docker compose config --quiet
 cd /home/AI-PIM/OpenPIM
 export DOCKER_HOST=unix:///mnt/wsl/docker-desktop/shared-sockets/host-services/docker.proxy.sock
 TS=$(date +%Y%m%dT%H%M%S)
-docker exec richangpim-postgres-1 pg_dump -U pim -d ai_pim -Fc -f /tmp/d.sqlc \
-  && docker cp richangpim-postgres-1:/tmp/d.sqlc "backups/manual_${TS}.sqlc" \
-  && docker exec richangpim-postgres-1 rm -f /tmp/d.sqlc \
+docker exec openpim-postgres-1 pg_dump -U pim -d ai_pim -Fc -f /tmp/d.sqlc \
+  && docker cp openpim-postgres-1:/tmp/d.sqlc "backups/manual_${TS}.sqlc" \
+  && docker exec openpim-postgres-1 rm -f /tmp/d.sqlc \
   && ls -la "backups/manual_${TS}.sqlc"
 ```
 

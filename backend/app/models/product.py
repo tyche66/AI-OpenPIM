@@ -12,6 +12,7 @@ from sqlalchemy import (
     Text,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import text
@@ -78,11 +79,17 @@ class Product(CommonBase):
     face_price = Column(Float, nullable=False)
     cost_price = Column(Float)
     material = Column(String(128))
+    # 材质说明：独立于 description 的受治理字段。产品"材质"与"材质说明"
+    # 不是一回事，不得把 description 当作材质说明。
+    material_description = Column(Text, nullable=True)
     stock_status = Column(String(20), default="in_stock")
     status = Column(String(20), default="draft")
     description = Column(Text)
     specification = Column(String(255))
     colors = Column(Text)
+    # 交货期/交期：自由文本标签（「现货」「7天」「30天」），导入导出与卡片共用。
+    # 不给枚举约束：供应商报价单的交期写法千奇百怪，硬枚举只会丢数据。
+    delivery_period = Column(String(64))
     data_source = Column(String(512))
     completeness_status = Column(String(20), nullable=False, default="complete")
     vector = Column(HalfVector(2048), nullable=True)
@@ -133,6 +140,15 @@ class Product(CommonBase):
     scene_images = relationship(
         "SceneImage", secondary="product_scene_image", back_populates="products"
     )
+    attribute_values = relationship(
+        "ProductAttributeValue",
+        back_populates="product",
+        cascade="all, delete-orphan",
+        primaryjoin=(
+            "and_(Product.id == ProductAttributeValue.product_id, "
+            "ProductAttributeValue.is_deleted.is_(False))"
+        ),
+    )
 
     @property
     def cover_image(self):
@@ -164,6 +180,11 @@ class Attachment(CommonBase):
     file_size = Column(Integer, nullable=False)
     storage_type = Column(String(20), default="minio")
     oss_key = Column(String(512), nullable=False)
+    # HLD §4.8 受控增量（迁移 0018）：NULL=历史/文件中心语义；
+    # 'product'|'customer'|'project'|'content' 时下载/预览/媒体库必须先过
+    # core.attachment_access.can_access_attachment。
+    biz_domain = Column(String(32), nullable=True)
+    biz_scope_id = Column(PGUUID(as_uuid=True), nullable=True)
 
     __table_args__ = (
         CheckConstraint(
@@ -180,6 +201,9 @@ class ProductImage(CommonBase):
     attachment_id = Column(PGUUID(as_uuid=True), ForeignKey("attachment.id"), nullable=False)
     sort = Column(Integer, default=0)
     is_cover = Column(Boolean, default=False)
+    # 视觉模型从图片产出的标签（如「圆形会议桌」「木质桌面」），参与产品卡片建向量。
+    # NULL=尚未标注，[]=标注过但没识别出内容；两者语义不同，不要合并。
+    vision_tags = Column(JSONB, nullable=True)
 
     product = relationship("Product", back_populates="images")
     attachment = relationship("Attachment")

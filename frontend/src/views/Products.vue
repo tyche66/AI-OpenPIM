@@ -1,6 +1,10 @@
 <template>
   <div class="products-page">
     <el-card class="glass-card">
+      <ProductFilterNav
+        ref="filterNavRef"
+        @change="handleNavFilterChange"
+      />
       <div class="toolbar">
         <el-form
           :inline="true"
@@ -14,108 +18,6 @@
               clearable
               class="filter-input capsule-input"
             />
-          </el-form-item>
-          <el-form-item label="分类">
-            <el-cascader
-              v-model="queryParams.categoryId"
-              :options="categoryOptions"
-              :props="{ checkStrictly: true, value: 'id', label: 'categoryName', children: 'children' }"
-              placeholder="全部"
-              clearable
-              class="filter-input capsule-select"
-            />
-          </el-form-item>
-          <el-form-item label="品牌">
-            <el-select
-              v-model="queryParams.brandId"
-              placeholder="全部"
-              clearable
-              class="filter-input capsule-select"
-            >
-              <el-option
-                v-for="b in brands"
-                :key="b.id"
-                :label="b.brandName"
-                :value="b.id"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="供应商">
-            <el-select
-              v-model="queryParams.supplierId"
-              placeholder="全部"
-              clearable
-              class="filter-input capsule-select"
-            >
-              <el-option
-                v-for="s in suppliers"
-                :key="s.id"
-                :label="s.supplierName"
-                :value="s.id"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="系列">
-            <el-select
-              v-model="queryParams.seriesTagId"
-              placeholder="全部"
-              clearable
-              filterable
-              class="filter-input capsule-select"
-            >
-              <el-option
-                v-for="tag in seriesTags"
-                :key="tag.id"
-                :label="tag.tagName"
-                :value="tag.id"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="状态">
-            <el-select
-              v-model="queryParams.status"
-              placeholder="全部"
-              clearable
-              class="filter-input capsule-select"
-            >
-              <el-option
-                label="上架"
-                value="active"
-              />
-              <el-option
-                label="下架"
-                value="inactive"
-              />
-              <el-option
-                label="草稿"
-                value="draft"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="库存">
-            <el-select
-              v-model="queryParams.stockStatus"
-              placeholder="全部"
-              clearable
-              class="filter-input capsule-select"
-            >
-              <el-option
-                label="有库存"
-                value="in_stock"
-              />
-              <el-option
-                label="缺货"
-                value="out_of_stock"
-              />
-              <el-option
-                label="预售"
-                value="preorder"
-              />
-              <el-option
-                label="未知"
-                value="unknown"
-              />
-            </el-select>
           </el-form-item>
           <el-form-item label="价格区间">
             <div class="price-range">
@@ -340,6 +242,24 @@
             :show-overflow-tooltip="{ teleported: true, placement: 'top' }"
           />
           <el-table-column
+            prop="deliveryPeriod"
+            label="交货期"
+            :width="colWidth('deliveryPeriod')"
+            :min-width="colMin('deliveryPeriod')"
+            align="center"
+          >
+            <template #default="{ row }">
+              <span
+                v-if="row.deliveryPeriod"
+                class="delivery-badge"
+              >{{ row.deliveryPeriod }}</span>
+              <span
+                v-else
+                class="text-muted"
+              >—</span>
+            </template>
+          </el-table-column>
+          <el-table-column
             prop="facePrice"
             label="面价"
             :width="colWidth('facePrice')"
@@ -524,6 +444,10 @@
             <div class="product-tile-body">
               <div class="product-tile-meta">
                 <span class="product-tile-no">{{ row.productNo }}</span>
+                <span
+                  v-if="row.deliveryPeriod"
+                  class="delivery-badge"
+                >{{ row.deliveryPeriod }}</span>
                 <span
                   class="status-text tile-status"
                   :class="`tone-${statusTone(row.status)}`"
@@ -755,6 +679,14 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="交货期">
+          <el-input
+            v-model="productForm.deliveryPeriod"
+            maxlength="64"
+            placeholder="例如 现货 / 7天 / 30天"
+            class="capsule-input"
+          />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button
@@ -837,6 +769,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { View, Hide, Operation, Grid, List, ArrowDown } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { productApi, categoryApi, brandApi, supplierApi, tagApi } from '@/api'
+import ProductFilterNav from '@/components/ProductFilterNav.vue'
 import { usePreference } from '@/composables/usePreference'
 import { fillColumnWidths, type FillColumn } from '@/utils/columnFill'
 import { useAuthStore } from '@/stores/auth'
@@ -930,22 +863,62 @@ const handleGridTileClick = (row: any) => {
 const brands = ref<any[]>([])
 const suppliers = ref<any[]>([])
 const tags = ref<any[]>([])
-const seriesTags = computed(() => tags.value.filter((tag) => tag.tagType === 'series'))
 const categoryOptions = ref<any[]>([])
 
 const queryParams = reactive({
   keyword: '',
-  status: '',
-  stockStatus: '',
-  brandId: '' as string | undefined,
-  supplierId: '' as string | undefined,
-  seriesTagId: '' as string | undefined,
-  categoryId: '' as string | string[] | undefined,
   minPrice: undefined as number | undefined,
   maxPrice: undefined as number | undefined,
   page: 1,
   size: 20,
 })
+
+/**
+ * 三级筛选导航选中的条件。维度与后端 dimension 同名，level2/level3 为该侧的
+ * 真实值（分类/品牌/供应商/枚举/规格长度），空串表示该层「全部」。
+ */
+const navFilter = reactive({
+  dimension: 'series',
+  level2: '',
+  level3: '',
+})
+const filterNavRef = ref<InstanceType<typeof ProductFilterNav> | null>(null)
+
+/**
+ * 把导航选择翻译成列表接口参数。每个维度只映射自己那一组字段，
+ * 其他维度一律不写——切换标签时不会把上一个维度的条件带进查询。
+ */
+function applyNavParams(target: Record<string, unknown>) {
+  const { dimension, level2, level3 } = navFilter
+  if (!level2) return
+  if (dimension === 'series') {
+    target.category_id = level2
+    // 二级计数只算「有系列标签」的产品，点进去必须同口径，否则数量和结果对不上。
+    target.tag_type = 'series'
+    if (level3) target.tag_ids = level3
+  } else if (dimension === 'brand') {
+    target.brand_id = level2
+    if (level3) target.category_id = level3
+  } else if (dimension === 'supplier') {
+    target.supplier_id = level2
+    if (level3) target.category_id = level3
+  } else if (dimension === 'status') {
+    target.status = level2
+  } else if (dimension === 'stock') {
+    target.stock_status = level2
+  } else if (dimension === 'category') {
+    target.category_id = level2
+    if (level3) target.spec_length_mm = level3
+  }
+}
+
+function handleNavFilterChange(selection: { dimension: string; level2: string; level3: string }) {
+  navFilter.dimension = selection.dimension
+  navFilter.level2 = selection.level2
+  navFilter.level3 = selection.level3
+  queryParams.page = 1
+  fetchProducts()
+}
 
 const productForm = reactive({
   productNo: '',
@@ -959,6 +932,7 @@ const productForm = reactive({
   stockStatus: 'in_stock',
   status: 'draft',
   tagIds: [] as string[],
+  deliveryPeriod: '',
 })
 
 const productRules: FormRules = {
@@ -983,15 +957,7 @@ const fetchProducts = async () => {
       size: queryParams.size,
     }
     if (queryParams.keyword) params.keyword = queryParams.keyword
-    if (queryParams.status) params.status = queryParams.status
-    if (queryParams.stockStatus) params.stock_status = queryParams.stockStatus
-    if (queryParams.brandId) params.brand_id = queryParams.brandId
-    if (queryParams.supplierId) params.supplier_id = queryParams.supplierId
-    if (queryParams.seriesTagId) params.tag_ids = queryParams.seriesTagId
-    if (queryParams.categoryId) {
-      const catId = Array.isArray(queryParams.categoryId) ? queryParams.categoryId[queryParams.categoryId.length - 1] : queryParams.categoryId
-      params.category_id = catId
-    }
+    applyNavParams(params)
     if (queryParams.minPrice !== undefined && queryParams.minPrice !== null) params.min_price = queryParams.minPrice
     if (queryParams.maxPrice !== undefined && queryParams.maxPrice !== null) params.max_price = queryParams.maxPrice
 
@@ -1062,6 +1028,7 @@ const COLUMNS: ColumnSpec[] = [
   { prop: 'productName', label: '产品名称', min: 180, max: Number.POSITIVE_INFINITY, grow: 3, font: FONT_STRONG },
   { prop: 'brandName', label: '品牌', min: 92, max: 220, grow: 0.7, font: FONT_BODY },
   { prop: 'categoryName', label: '分类', min: 96, max: 240, grow: 0.7, font: FONT_BODY },
+  { prop: 'deliveryPeriod', label: '交货期', min: 84, max: 150, grow: 0.4, font: FONT_STATUS, text: (row) => row.deliveryPeriod || '—' },
   {
     prop: 'facePrice',
     label: '面价',
@@ -1217,6 +1184,7 @@ const normalizeProduct = (item: any) => ({
   stockStatus: item.stock_status,
   completenessStatus: item.completeness_status,
   dataSource: item.data_source,
+  deliveryPeriod: item.delivery_period || '',
   tagIds: item.tag_ids || [],
   createTime: item.create_time,
   updateTime: item.update_time,
@@ -1275,16 +1243,11 @@ const handleSearch = () => {
 
 const handleReset = () => {
   queryParams.keyword = ''
-  queryParams.status = ''
-  queryParams.stockStatus = ''
-  queryParams.brandId = ''
-  queryParams.supplierId = ''
-  queryParams.seriesTagId = ''
-  queryParams.categoryId = ''
   queryParams.minPrice = undefined
   queryParams.maxPrice = undefined
   queryParams.page = 1
-  fetchProducts()
+  // reset() 会清空三级选择并 emit change，列表由 handleNavFilterChange 统一刷新。
+  filterNavRef.value?.reset()
 }
 
 const resetProductForm = () => {
@@ -1299,6 +1262,7 @@ const resetProductForm = () => {
   productForm.stockStatus = 'in_stock'
   productForm.status = 'draft'
   productForm.tagIds = []
+  productForm.deliveryPeriod = ''
 }
 
 const handleSubmit = async () => {
@@ -1317,6 +1281,7 @@ const handleSubmit = async () => {
         stock_status: productForm.stockStatus,
         status: productForm.status,
         tag_ids: productForm.tagIds,
+        delivery_period: productForm.deliveryPeriod.trim() || null,
       }
       if (productForm.costPrice !== undefined && productForm.costPrice !== null) payload.cost_price = productForm.costPrice
       if (productForm.material) payload.material = productForm.material
@@ -1358,6 +1323,7 @@ const handleEdit = (row: any) => {
   productForm.material = row.material || ''
   productForm.stockStatus = row.stockStatus
   productForm.status = row.status
+  productForm.deliveryPeriod = row.deliveryPeriod || ''
   productForm.tagIds = row.tagIds?.length
     ? [...row.tagIds]
     : (row.tags || [])
@@ -1415,15 +1381,9 @@ const handleClone = async (row: any) => {
 const handleExport = async () => {
   const params: Record<string, string> = {}
   if (queryParams.keyword) params.keyword = queryParams.keyword
-  if (queryParams.status) params.status = queryParams.status
-  if (queryParams.stockStatus) params.stock_status = queryParams.stockStatus
-  if (queryParams.brandId) params.brand_id = queryParams.brandId
-  if (queryParams.supplierId) params.supplier_id = queryParams.supplierId
-  if (queryParams.seriesTagId) params.tag_ids = queryParams.seriesTagId
-  if (queryParams.categoryId) {
-    const catId = Array.isArray(queryParams.categoryId) ? queryParams.categoryId[queryParams.categoryId.length - 1] : queryParams.categoryId
-    params.category_id = catId
-  }
+  const navParams: Record<string, unknown> = {}
+  applyNavParams(navParams)
+  for (const [key, value] of Object.entries(navParams)) params[key] = String(value)
   if (queryParams.minPrice !== undefined && queryParams.minPrice !== null) params.min_price = String(queryParams.minPrice)
   if (queryParams.maxPrice !== undefined && queryParams.maxPrice !== null) params.max_price = String(queryParams.maxPrice)
 
@@ -1489,19 +1449,53 @@ const toggleMobileSelection = (row: any) => {
   allSelectedProducts.value = nextProducts
 }
 
-const finishProposal = () => {
-  if (selectedIds.value.size === 0) return
+function createProposalSelectionTokenId(): string {
+  try {
+    if (typeof globalThis.crypto?.randomUUID === 'function') {
+      return globalThis.crypto.randomUUID()
+    }
+    if (typeof globalThis.crypto?.getRandomValues === 'function') {
+      const bytes = new Uint8Array(16)
+      globalThis.crypto.getRandomValues(bytes)
+      return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')
+    }
+  } catch {
+    // Fall back to an in-memory identifier when browser crypto is unavailable.
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+}
+
+const finishProposal = async () => {
+  if (selectedIds.value.size === 0) {
+    ElMessage.warning('请至少选择一项商品')
+    return
+  }
+
   const token: ProposalToken = {
     productIds: [...selectedIds.value],
     options: allSelectedProducts.value,
   }
-  const tokenId = crypto.randomUUID()
-  sessionStorage.setItem(`proposal_token_${tokenId}`, JSON.stringify(token))
-  exitProposalMode()
-  router.push({
-    path: '/proposals',
-    query: { mode: 'create', selection_token: tokenId },
-  })
+  const tokenId = createProposalSelectionTokenId()
+  const storageKey = `proposal_token_${tokenId}`
+  try {
+    sessionStorage.setItem(storageKey, JSON.stringify(token))
+    const navigationFailure = await router.push({
+      path: '/proposals',
+      query: { mode: 'create', selection_token: tokenId },
+    })
+    if (navigationFailure || router.currentRoute.value.path !== '/proposals') {
+      throw navigationFailure || new Error('proposal route was not reached')
+    }
+    exitProposalMode()
+    ElMessage.success('已进入方案创建')
+  } catch {
+    try {
+      sessionStorage.removeItem(storageKey)
+    } catch {
+      // Storage can be unavailable in the same contexts that reject setItem.
+    }
+    ElMessage.error('无法打开方案创建页面，请重试')
+  }
 }
 
 onMounted(() => {
@@ -1530,20 +1524,22 @@ watch([viewMode, proposalMode], () => {
 <style scoped>
 /* ===== CSS Variables ===== */
 .products-page {
-  --brand-deep: rgba(30, 50, 90, 0.92);
-  --brand-primary: rgba(30, 50, 90, 0.85);
-  --brand-light: rgba(30, 50, 90, 0.08);
-  --brand-lighter: rgba(30, 50, 90, 0.04);
-  --text-primary: #5E6470;
-  --text-secondary: rgba(30, 50, 90, 0.6);
-  --bg-mist: #f0f0f0;
-  --glass-bg: rgba(255, 255, 255, 0.72);
-  --glass-border: rgba(255, 255, 255, 0.5);
-  --radius-lg: 28px;
-  --radius-md: 18px;
+  /* 以下别名全部指向 design-system.css 的全局语义 Token：
+     浅色保持原值，深色随 .dark-mode 自动切换，本文件不再需要深色覆盖块 */
+  --brand-deep: var(--pim-text-strong);
+  --brand-primary: var(--pim-text-strong);
+  --brand-light: rgba(var(--pim-brand), 0.08);
+  --brand-lighter: rgba(var(--pim-brand), 0.04);
+  --text-primary: var(--pim-text-primary);
+  --text-secondary: var(--pim-text-secondary);
+  --bg-mist: var(--pim-page);
+  --glass-bg: var(--pim-surface);
+  --glass-border: var(--pim-card-border);
+  --radius-lg: var(--pim-radius);
+  --radius-md: var(--pim-radius-sm);
   --radius-sm: 12px;
-  --shadow-soft: 0 4px 24px rgba(30, 50, 90, 0.06);
-  --shadow-hover: 0 8px 32px rgba(30, 50, 90, 0.1);
+  --shadow-soft: 0 4px 24px rgba(var(--pim-brand), 0.06);
+  --shadow-hover: 0 8px 32px rgba(var(--pim-brand), 0.1);
   --transition-fast: 200ms cubic-bezier(0.4, 0, 0.2, 1);
   padding: 16px;
   min-height: 100vh;
@@ -1551,7 +1547,7 @@ watch([viewMode, proposalMode], () => {
 }
 
 /* ===== Glass Card ===== */
-/* 这里不要再加 backdrop-filter：卡片背后是 .products-page 的纯色 #f0f0f0，
+/* 这里不要再加 backdrop-filter：卡片背后是 .products-page 的纯色 var(--pim-page)，
    模糊纯色画面上毫无变化，但滚动时每帧都要重算整卡可见区域 —— 列表页滚轮卡顿
    的主因之一。毛玻璃只留给压在内容上的浮层（弹窗、遮罩）。 */
 .glass-card {
@@ -1564,7 +1560,7 @@ watch([viewMode, proposalMode], () => {
 
 .glass-card :deep(.el-card__header) {
   background: transparent;
-  border-bottom: 1px solid rgba(30, 50, 90, 0.06);
+  border-bottom: 1px solid rgba(var(--pim-brand), 0.06);
   padding: 20px 24px;
 }
 
@@ -1578,6 +1574,22 @@ watch([viewMode, proposalMode], () => {
   flex-direction: column;
   gap: 16px;
   margin-bottom: 16px;
+}
+
+/* 交货期是「能不能马上发货」的决策信息，用低饱和徽章而不是普通文本。 */
+.delivery-badge {
+  display: inline-block;
+  max-width: 100%;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(var(--pim-brand), 0.08);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
 }
 
 .filter-form {
@@ -1611,8 +1623,8 @@ watch([viewMode, proposalMode], () => {
   min-height: 36px;
   padding: 0 12px;
   border: 0;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 0 0 1px rgba(30, 50, 90, 0.08) inset;
+  background: var(--pim-field);
+  box-shadow: 0 0 0 1px rgba(var(--pim-brand), 0.08) inset;
 }
 
 .view-mode-toggle :deep(.el-radio-button__inner .el-icon) {
@@ -1623,8 +1635,8 @@ watch([viewMode, proposalMode], () => {
 }
 
 .view-mode-toggle :deep(.el-radio-button__orig-radio:checked + .el-radio-button__inner) {
-  background: rgba(30, 50, 90, 0.92);
-  color: #fff;
+  background: var(--pim-accent-solid);
+  color: var(--pim-on-accent);
   box-shadow: none;
 }
 
@@ -1633,7 +1645,7 @@ watch([viewMode, proposalMode], () => {
 .capsule-select :deep(.el-select__wrapper),
 .capsule-select :deep(.el-input__wrapper) {
   border-radius: 20px;
-  box-shadow: 0 0 0 1px rgba(30, 50, 90, 0.1) inset;
+  box-shadow: 0 0 0 1px rgba(var(--pim-brand), 0.1) inset;
   padding: 4px 16px;
   transition: var(--transition-fast);
 }
@@ -1641,13 +1653,13 @@ watch([viewMode, proposalMode], () => {
 .capsule-input :deep(.el-input__wrapper):hover,
 .capsule-select :deep(.el-select__wrapper):hover,
 .capsule-select :deep(.el-input__wrapper):hover {
-  box-shadow: 0 0 0 1px rgba(30, 50, 90, 0.25) inset;
+  box-shadow: 0 0 0 1px rgba(var(--pim-brand), 0.25) inset;
 }
 
 .capsule-input :deep(.el-input__wrapper.is-focus),
 .capsule-select :deep(.el-select__wrapper.is-focus),
 .capsule-select :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 2px rgba(30, 50, 90, 0.3) inset;
+  box-shadow: 0 0 0 2px rgba(var(--pim-brand), 0.3) inset;
 }
 
 .filter-input {
@@ -1731,7 +1743,7 @@ watch([viewMode, proposalMode], () => {
 
 .more-trigger:hover {
   color: var(--brand-deep);
-  background: rgba(30, 50, 90, 0.06);
+  background: rgba(var(--pim-brand), 0.06);
 }
 
 .flat-action-menu {
@@ -1746,17 +1758,17 @@ watch([viewMode, proposalMode], () => {
 }
 
 .flat-action-menu :deep(.el-dropdown-menu__item:hover) {
-  background: rgba(30, 50, 90, 0.06);
+  background: rgba(var(--pim-brand), 0.06);
   color: var(--brand-deep);
 }
 
 .dropdown-item-danger {
-  color: #f56c6c;
+  color: var(--pim-danger-bright);
 }
 
 .dropdown-item-danger:hover {
-  background: #fef0f0;
-  color: #f56c6c;
+  background: var(--pim-danger-bg);
+  color: var(--pim-danger-bright);
 }
 
 /* ===== Price Range ===== */
@@ -1902,26 +1914,26 @@ watch([viewMode, proposalMode], () => {
   flex-direction: column;
   overflow: hidden;
   border-radius: 16px;
-  background: #fff;
-  border: 1px solid rgba(30, 50, 90, 0.06);
-  box-shadow: 0 4px 16px rgba(30, 50, 90, 0.05);
+  background: var(--pim-surface);
+  border: 1px solid rgba(var(--pim-brand), 0.06);
+  box-shadow: 0 4px 16px rgba(var(--pim-brand), 0.05);
   cursor: pointer;
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
 }
 
 .product-tile:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 28px rgba(30, 50, 90, 0.08);
+  box-shadow: 0 10px 28px rgba(var(--pim-brand), 0.08);
 }
 
 .product-tile.is-selected {
-  border-color: rgba(30, 50, 90, 0.28);
-  box-shadow: 0 0 0 2px rgba(30, 50, 90, 0.08), 0 10px 28px rgba(30, 50, 90, 0.08);
+  border-color: rgba(var(--pim-brand), 0.28);
+  box-shadow: 0 0 0 2px rgba(var(--pim-brand), 0.08), 0 10px 28px rgba(var(--pim-brand), 0.08);
 }
 
 .product-tile-image {
   aspect-ratio: 1 / 1;
-  background: linear-gradient(180deg, rgba(30, 50, 90, 0.03), rgba(30, 50, 90, 0.01));
+  background: linear-gradient(180deg, rgba(var(--pim-brand), 0.03), rgba(var(--pim-brand), 0.01));
   overflow: hidden;
 }
 
@@ -1942,11 +1954,11 @@ watch([viewMode, proposalMode], () => {
   height: 100%;
   display: grid;
   place-items: center;
-  color: rgba(30, 50, 90, 0.42);
+  color: rgba(var(--pim-brand), 0.42);
   font-size: 24px;
   font-weight: 700;
   letter-spacing: 0.08em;
-  background: linear-gradient(135deg, rgba(30, 50, 90, 0.04), rgba(30, 50, 90, 0.02));
+  background: linear-gradient(135deg, rgba(var(--pim-brand), 0.04), rgba(var(--pim-brand), 0.02));
 }
 
 .product-tile-body {
@@ -2028,7 +2040,7 @@ watch([viewMode, proposalMode], () => {
 
 .thumb-img :deep(img) {
   border-radius: 8px;
-  background: #fff;
+  background: var(--pim-media-bg);
 }
 
 .thumb-placeholder {
@@ -2061,19 +2073,19 @@ watch([viewMode, proposalMode], () => {
 }
 
 .status-text.tone-ok {
-  color: #4f6b57;
+  color: var(--pim-success);
 }
 
 .status-text.tone-warn {
-  color: #8a6a3c;
+  color: var(--pim-warning-ink);
 }
 
 .status-text.tone-danger {
-  color: #8f5b57;
+  color: var(--pim-danger-ink);
 }
 
 .status-text.tone-muted {
-  color: rgba(30, 50, 90, 0.7);
+  color: rgba(var(--pim-brand), 0.7);
 }
 
 /* ===== Pagination ===== */
@@ -2099,8 +2111,8 @@ watch([viewMode, proposalMode], () => {
 
 .pagination-wrap :deep(.el-pager li.active),
 .pagination-wrap :deep(.el-pager li.active:hover) {
-  background: var(--brand-primary);
-  color: #fff;
+  background: var(--pim-accent-solid);
+  color: var(--pim-on-accent);
 }
 
 .pagination-wrap :deep(.el-pager li:hover:not(.active)),
@@ -2113,14 +2125,14 @@ watch([viewMode, proposalMode], () => {
 .glass-dialog :deep(.el-dialog) {
   border-radius: var(--radius-lg) !important;
   overflow: hidden;
-  box-shadow: 0 20px 60px rgba(30, 50, 90, 0.15);
+  box-shadow: 0 20px 60px rgba(var(--pim-brand), 0.15);
 }
 
 .glass-dialog :deep(.el-dialog__header) {
-  background: linear-gradient(135deg, rgba(30, 50, 90, 0.06), rgba(30, 50, 90, 0.02));
+  background: linear-gradient(135deg, rgba(var(--pim-brand), 0.06), rgba(var(--pim-brand), 0.02));
   padding: 20px 24px 16px;
   margin-right: 0;
-  border-bottom: 1px solid rgba(30, 50, 90, 0.06);
+  border-bottom: 1px solid rgba(var(--pim-brand), 0.06);
 }
 
 .glass-dialog :deep(.el-dialog__title) {
@@ -2157,7 +2169,7 @@ watch([viewMode, proposalMode], () => {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  background: rgba(30, 50, 90, 0.06);
+  background: rgba(var(--pim-brand), 0.06);
   border-radius: var(--radius-md);
   margin-bottom: 16px;
 }
@@ -2191,9 +2203,9 @@ watch([viewMode, proposalMode], () => {
     align-items: center;
     gap: 10px;
     padding: 12px;
-    border: 1px solid rgba(30, 50, 90, 0.12);
+    border: 1px solid rgba(var(--pim-brand), 0.12);
     border-radius: 14px;
-    background: rgba(255, 255, 255, 0.86);
+    background: var(--pim-surface-strong);
     color: var(--text-primary);
     text-align: left;
   }
@@ -2357,4 +2369,5 @@ watch([viewMode, proposalMode], () => {
     flex-shrink: 0;
   }
 }
+
 </style>

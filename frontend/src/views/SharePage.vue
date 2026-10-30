@@ -105,6 +105,7 @@
           <div class="content-section">
             <h3 class="section-heading">
               商品列表
+              <span class="section-hint">点击商品行查看规格、材质与颜色等详细信息</span>
             </h3>
             <div class="table-responsive">
               <el-table
@@ -112,7 +113,8 @@
                 border
                 stripe
                 class="share-table"
-                @row-click="handleRowClick"
+                row-class-name="share-table__row"
+                @row-click="handleRowOpen"
               >
                 <el-table-column
                   label="商品名称"
@@ -160,6 +162,21 @@
                     <span class="row-subtotal">¥{{ formatCNY(row.face_price ? row.face_price * row.quantity : 0) }}</span>
                   </template>
                 </el-table-column>
+                <el-table-column
+                  label=""
+                  width="96"
+                  align="center"
+                >
+                  <template #default="{ row }">
+                    <button
+                      type="button"
+                      class="row-detail-btn"
+                      @click.stop="handleRowOpen(row)"
+                    >
+                      查看详情
+                    </button>
+                  </template>
+                </el-table-column>
               </el-table>
             </div>
           </div>
@@ -196,6 +213,7 @@
           <div class="content-section">
             <h3 class="section-heading">
               商品明细
+              <span class="section-hint">点击商品行查看规格、材质与颜色等详细信息</span>
             </h3>
             <div class="table-responsive">
               <el-table
@@ -203,7 +221,8 @@
                 border
                 stripe
                 class="share-table"
-                @row-click="handleRowClick"
+                row-class-name="share-table__row"
+                @row-click="handleRowOpen"
               >
                 <el-table-column
                   label="商品名称"
@@ -275,6 +294,21 @@
                     <span class="subtotal-text">¥{{ formatCNY(row.unit_price ? row.unit_price * row.quantity * (1 + (row.tax_rate ?? 0)) : 0) }}</span>
                   </template>
                 </el-table-column>
+                <el-table-column
+                  label=""
+                  width="96"
+                  align="center"
+                >
+                  <template #default="{ row }">
+                    <button
+                      type="button"
+                      class="row-detail-btn"
+                      @click.stop="handleRowOpen(row)"
+                    >
+                      查看详情
+                    </button>
+                  </template>
+                </el-table-column>
               </el-table>
             </div>
           </div>
@@ -291,16 +325,143 @@
         </div>
       </div>
 
+      <!-- 商品详情弹窗：规格 / 材质 / 颜色 / 材质说明 / 场景图在点击后展开 -->
+      <el-dialog
+        v-model="detailVisible"
+        :title="detailItem?.product_name || '商品详情'"
+        append-to-body
+        align-center
+        width="640px"
+        class="share-detail-dialog"
+      >
+        <template v-if="detailItem">
+          <div class="detail-head">
+            <div class="detail-thumb">
+              <img
+                v-if="detailItem.cover_image_url && !detailItem._imgError"
+                :src="detailItem.cover_image_url"
+                class="thumb-img"
+                alt=""
+                @error="onImgError(detailItem)"
+              >
+              <span
+                v-else
+                class="thumb-placeholder"
+              >{{ getPlaceholderText(detailItem.product_name) }}</span>
+            </div>
+            <div class="detail-head__text">
+              <span class="detail-name">{{ detailItem.product_name || '-' }}</span>
+              <span class="detail-no">{{ detailItem.product_no || '-' }}</span>
+              <div class="detail-tags">
+                <el-tag
+                  v-if="detailItem.category_name"
+                  size="small"
+                  class="capsule-tag"
+                >
+                  {{ detailItem.category_name }}
+                </el-tag>
+                <el-tag
+                  v-if="detailLocation"
+                  size="small"
+                  type="warning"
+                  class="capsule-tag"
+                >
+                  {{ detailLocation }}
+                </el-tag>
+              </div>
+            </div>
+          </div>
+
+          <el-descriptions
+            :column="1"
+            border
+            size="small"
+            class="detail-descriptions"
+          >
+            <el-descriptions-item label="规格">
+              {{ detailItem.specification || '未提供' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="材质">
+              {{ detailMaterial || '未提供' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="颜色">
+              {{ detailItem.colors || '未提供' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="材质说明">
+              {{ detailItem.material_desc || '未提供' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="面价">
+              <span class="price-text">¥{{ formatCNY(detailItem.face_price) }}</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="数量">
+              {{ detailItem.quantity }}
+            </el-descriptions-item>
+            <el-descriptions-item
+              v-if="shareData.share_type === 'quotation'"
+              label="单价"
+            >
+              <span class="price-text">¥{{ formatCNY(detailItem.unit_price) }}</span>
+            </el-descriptions-item>
+            <el-descriptions-item
+              v-if="shareData.share_type === 'quotation'"
+              label="税率"
+            >
+              {{ detailItem.tax_rate !== undefined && detailItem.tax_rate !== null ? (detailItem.tax_rate * 100).toFixed(0) + '%' : '-' }}
+            </el-descriptions-item>
+          </el-descriptions>
+
+          <div
+            v-if="detailItem.scene_images?.length"
+            class="detail-scenes"
+          >
+            <div class="detail-scenes__title">
+              场景图 {{ detailSceneCount }} 张，点击查看大图
+            </div>
+            <div class="detail-scenes__grid">
+              <button
+                v-for="(image, idx) in detailItem.scene_images.filter((s) => s.image_url)"
+                :key="image.id"
+                type="button"
+                class="scene-cell"
+                @click="openSceneCarousel(idx)"
+              >
+                <img
+                  :src="image.image_url as string"
+                  :alt="image.name || '场景图'"
+                  loading="lazy"
+                >
+                <span class="scene-cell__name">{{ image.name || `场景图 ${idx + 1}` }}</span>
+              </button>
+            </div>
+          </div>
+          <p
+            v-else
+            class="detail-scenes__empty"
+          >
+            暂无场景图
+          </p>
+        </template>
+        <template #footer>
+          <el-button
+            class="capsule-btn"
+            @click="detailVisible = false"
+          >
+            关闭
+          </el-button>
+        </template>
+      </el-dialog>
+
       <ProductSceneCarousel
         v-model="sceneCarouselVisible"
         :images="currentSceneImages"
+        :initial-index="sceneCarouselIndex"
       />
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { shareApi } from '@/api'
@@ -327,17 +488,43 @@ const proposalContent = ref<ShareProposalContent | null>(null)
 const quotationContent = ref<ShareQuotationContent | null>(null)
 
 const sceneCarouselVisible = ref(false)
+const sceneCarouselIndex = ref(0)
 const currentSceneImages = ref<Array<{ name?: string; image_url: string }>>([])
+
+// 商品详情改为点击后的弹窗展示，明细表只保留摘要列
+const detailVisible = ref(false)
+const detailItem = ref<ShareProductItem | null>(null)
 
 const statusMap: Record<string, string> = { draft: '草稿', confirmed: '已确认' }
 
-const handleRowClick = (row: ShareProductItem) => {
-  if (row.scene_images && row.scene_images.length > 0) {
-    currentSceneImages.value = row.scene_images
-      .filter((image): image is typeof image & { image_url: string } => Boolean(image.image_url))
-      .map((image) => ({ name: image.name, image_url: image.image_url }))
-    sceneCarouselVisible.value = true
-  }
+const detailLocation = computed<string>(() => {
+  const item = detailItem.value
+  if (!item) return ''
+  return [item.floor_label, item.space_label].filter(Boolean).join(' · ')
+})
+
+const detailMaterial = computed<string>(() => {
+  const item = detailItem.value
+  if (!item) return ''
+  return item.material || item.material_description || ''
+})
+
+const detailSceneCount = computed<number>(() => {
+  return (detailItem.value?.scene_images || []).filter((s) => Boolean(s.image_url)).length
+})
+
+const handleRowOpen = (row: ShareProductItem) => {
+  detailItem.value = row
+  detailVisible.value = true
+}
+
+const openSceneCarousel = (idx: number) => {
+  const images = (detailItem.value?.scene_images || []).filter(
+    (image): image is typeof image & { image_url: string } => Boolean(image.image_url),
+  )
+  currentSceneImages.value = images.map((image) => ({ name: image.name, image_url: image.image_url }))
+  sceneCarouselIndex.value = idx
+  sceneCarouselVisible.value = true
 }
 
 const getPlaceholderText = (name: string | undefined): string => {
@@ -409,7 +596,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  background: linear-gradient(135deg, #f0f0f0 0%, #e8ecf1 100%);
+  background: var(--pim-page);
   padding: 24px 16px 40px;
 }
 
@@ -422,14 +609,14 @@ onMounted(() => {
 .brand-logo {
   font-size: 28px;
   font-weight: 700;
-  color: rgb(30, 50, 90);
+  color: rgb(var(--pim-brand));
   letter-spacing: 4px;
   margin-bottom: 4px;
 }
 
 .brand-subtitle {
   font-size: 13px;
-  color: #5E6470;
+  color: var(--pim-text-primary);
   letter-spacing: 2px;
   font-weight: 400;
 }
@@ -437,18 +624,18 @@ onMounted(() => {
 .share-card {
   width: 100%;
   max-width: 800px;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--pim-surface);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-radius: 32px;
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  box-shadow: 0 8px 40px rgba(30, 50, 90, 0.08);
+  border: 1px solid var(--pim-surface-border);
+  box-shadow: 0 8px 40px rgba(var(--pim-brand), 0.08);
   overflow: hidden;
 }
 
 .share-card :deep(.el-card__header) {
-  background: rgba(30, 50, 90, 0.04);
-  border-bottom: 1px solid rgba(30, 50, 90, 0.08);
+  background: rgba(var(--pim-brand), 0.04);
+  border-bottom: 1px solid rgba(var(--pim-brand), 0.08);
   padding: 20px 24px;
 }
 
@@ -461,7 +648,7 @@ onMounted(() => {
 .card-title {
   font-size: 20px;
   font-weight: 600;
-  color: rgb(30, 50, 90);
+  color: rgb(var(--pim-brand));
   letter-spacing: 0.5px;
 }
 
@@ -510,10 +697,10 @@ onMounted(() => {
 .section-heading {
   font-size: 16px;
   font-weight: 600;
-  color: rgb(30, 50, 90);
+  color: rgb(var(--pim-brand));
   margin: 0 0 12px 0;
   padding-bottom: 8px;
-  border-bottom: 2px solid rgba(30, 50, 90, 0.08);
+  border-bottom: 2px solid rgba(var(--pim-brand), 0.08);
 }
 
 .info-descriptions {
@@ -528,31 +715,31 @@ onMounted(() => {
 .mono-text {
   font-family: monospace;
   font-size: 12px;
-  color: #5E6470;
+  color: var(--pim-text-primary);
 }
 
 .price-text {
   font-weight: 600;
-  color: rgb(30, 50, 90);
+  color: rgb(var(--pim-brand));
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 .row-subtotal {
   font-family: monospace;
-  color: rgb(30, 50, 90);
+  color: rgb(var(--pim-brand));
   font-weight: 600;
 }
 
 .subtotal-text {
   font-family: monospace;
-  color: rgb(30, 50, 90);
+  color: rgb(var(--pim-brand));
   font-weight: 600;
 }
 
 .total-amount {
   font-size: 20px;
   font-weight: 700;
-  color: rgb(30, 50, 90);
+  color: rgb(var(--pim-brand));
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
@@ -575,19 +762,174 @@ onMounted(() => {
   cursor: pointer;
 }
 
+.section-hint {
+  margin-left: 10px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--pim-text-faint);
+}
+
+.row-detail-btn {
+  padding: 2px 10px;
+  border: 1px solid rgba(var(--pim-brand), 0.25);
+  border-radius: 12px;
+  background: transparent;
+  color: rgb(var(--pim-brand));
+  font-size: 12px;
+  line-height: 1.6;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.row-detail-btn:hover {
+  background: rgba(var(--pim-brand), 0.08);
+  border-color: rgba(var(--pim-brand), 0.45);
+}
+
+/* ===== 商品详情弹窗 ===== */
+.share-detail-dialog :deep(.el-dialog) {
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+.share-detail-dialog :deep(.el-dialog__header) {
+  padding: 18px 22px 12px;
+  border-bottom: 1px solid rgba(var(--pim-brand), 0.08);
+}
+
+.share-detail-dialog :deep(.el-dialog__title) {
+  font-size: 17px;
+  font-weight: 600;
+  color: rgb(var(--pim-brand));
+}
+
+.share-detail-dialog :deep(.el-dialog__body) {
+  padding: 18px 22px;
+}
+
+.share-detail-dialog :deep(.el-dialog__footer) {
+  padding: 12px 22px 18px;
+}
+
+.detail-head {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.detail-thumb {
+  width: 72px;
+  height: 72px;
+  border-radius: 12px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--pim-media-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.detail-thumb .thumb-img {
+  width: 72px;
+  height: 72px;
+}
+
+.detail-head__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.detail-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgb(var(--pim-brand));
+}
+
+.detail-no {
+  font-size: 12px;
+  font-family: monospace;
+  color: var(--pim-text-faint);
+}
+
+.detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.detail-descriptions {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.detail-scenes {
+  margin-top: 18px;
+}
+
+.detail-scenes__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgb(var(--pim-brand));
+  margin-bottom: 10px;
+}
+
+.detail-scenes__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+.scene-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  border: 1px solid rgba(var(--pim-brand), 0.1);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--pim-surface);
+  cursor: pointer;
+  text-align: left;
+}
+
+.scene-cell img {
+  width: 100%;
+  height: 86px;
+  object-fit: cover;
+  display: block;
+}
+
+.scene-cell__name {
+  padding: 0 8px 6px;
+  font-size: 11px;
+  color: var(--pim-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.detail-scenes__empty {
+  margin: 16px 0 0;
+  font-size: 12px;
+  color: var(--pim-text-faint);
+}
+
 .share-footer {
   margin-top: 28px;
   text-align: center;
 }
 
 .footer-text {
-  color: #5E6470;
+  color: var(--pim-text-primary);
   font-size: 13px;
   margin: 0 0 4px 0;
 }
 
 .footer-brand {
-  color: #5E6470;
+  color: var(--pim-text-primary);
   font-size: 12px;
   margin: 0;
   opacity: 0.7;
@@ -667,7 +1009,7 @@ onMounted(() => {
   border-radius: 8px;
   overflow: hidden;
   flex-shrink: 0;
-  background: #f0f2f5;
+  background: var(--pim-media-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -683,7 +1025,7 @@ onMounted(() => {
 .thumb-placeholder {
   font-size: 12px;
   font-weight: 600;
-  color: #999;
+  color: var(--pim-text-faint);
   line-height: 1.2;
   text-align: center;
   word-break: keep-all;
@@ -697,7 +1039,7 @@ onMounted(() => {
 
 .product-name-text {
   font-size: 14px;
-  color: rgb(30, 50, 90);
+  color: rgb(var(--pim-brand));
   line-height: 1.4;
   font-weight: 600;
   white-space: nowrap;
@@ -707,7 +1049,7 @@ onMounted(() => {
 
 .product-no-text {
   font-size: 11px;
-  color: #999;
+  color: var(--pim-text-faint);
   font-family: monospace;
 }
 </style>

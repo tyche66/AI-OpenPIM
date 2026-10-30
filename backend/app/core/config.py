@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # 这个值是 APP_VERSION 没被注入时的兜底：原来写死 "0.1.0"，于是任何忘记传
     # 构建参数的部署（以及全部开发环境）都会在 /api/v1/version、/health、
     # OpenAPI 文档里报 0.1.0，和真实产品版本差了 8 个 MINOR。兜底值必须是真话。
-    VERSION: str = "1.9.1"
+    VERSION: str = "1.9.8"
     APP_VERSION: str | None = None
     BUILD_ID: str = "dev-local"
     GIT_COMMIT: str = "unknown"
@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     AI_API_KEY_FILE: str | None = None
 
     AI_CHAT_MODEL: str = "gpt-4o-mini"
+    # 视觉标注模型（多模态）。留空表示不启用视觉标注，不回落 chat_model。
+    AI_VISION_MODEL: str | None = None
     AI_EMBEDDING_MODEL: str = "nvidia/nemotron-3-embed-1b:free"
     AI_EMBEDDING_VERSION: str | None = None
     AI_EMBEDDING_CACHE_ENABLED: bool = False
@@ -95,6 +97,16 @@ class Settings(BaseSettings):
     AI_ESTIMATED_PRICE_TABLE_PATH: str | None = None
     AI_PRICING_BACKEND: str | None = None
 
+    # 内容域独立 AI 配置。内容服务只使用 chat，不使用该适配器做 embeddings。
+    CONTENT_AI_API_URL: str = "https://api.example.com/v1"
+    CONTENT_AI_API_KEY: str | None = None
+    CONTENT_AI_API_KEY_FILE: str | None = None
+    CONTENT_AI_CHAT_MODEL: str = "gpt-4o-mini"
+    CONTENT_AI_CHAT_MODELS: str = "gpt-4o-mini"
+    CONTENT_AI_TIMEOUT: float = 180.0
+    CONTENT_AI_ROUTE_TIMEOUT: float = 3.0
+    CONTENT_AI_MAX_RETRIES: int = 0
+
     SHARE_IMAGE_URL_EXPIRE_HOURS: int = 24
 
     # 批量导入产品（POST /api/v1/products/import）。带图导入的上传体积比纯表格大
@@ -118,9 +130,35 @@ class Settings(BaseSettings):
     PRODUCT_IMPORT_ALLOW_URL_FETCH: bool = False
     PRODUCT_IMPORT_URL_TIMEOUT: float = 10.0
 
+    # 预检暂存（重传产品包：先 preflight 再 commit）。
+    # 为什么落盘而不是内存：后台是 UVICORN_WORKERS=2，两个 worker 共享同一份文件
+    # 系统但各有自己的进程内存，暂存到共享目录才能让 commit 命中任意 worker；
+    # 也避免 259MB 的包让用户为了「确认一次」再传一遍。
+    PRODUCT_IMPORT_STAGING_DIR: str = "/tmp/pim_import_staging"
+    PRODUCT_IMPORT_STAGING_TTL_SECONDS: int = 7200
+    # 预检回显的冲突明细条数上限（超出只给计数 + truncated 标记）。
+    PRODUCT_IMPORT_CONFLICT_LIMIT: int = 200
+
+    # 提醒引擎（HLD §14）
+    REMINDER_HOUR: int = 9
+    REMINDER_SKIP_WEEKEND: bool = False
+    REMINDER_ADOPT_DAYS: int = 2
+    REMINDER_PUBLISH_DAYS: int = 2
+    REMINDER_METRIC_DAYS: str = "1,3,7"
+    REMINDER_ESCALATE_HOURS: int = 24
+    REMINDER_LLM_POLISH: bool = False
+
     def model_post_init(self, __context) -> None:
         if self.AI_API_KEY_FILE:
             self.AI_API_KEY = Path(self.AI_API_KEY_FILE).read_text(encoding="utf-8").strip()
+        if self.CONTENT_AI_API_KEY_FILE:
+            try:
+                self.CONTENT_AI_API_KEY = Path(self.CONTENT_AI_API_KEY_FILE).read_text(
+                    encoding="utf-8"
+                ).strip()
+            except (OSError, UnicodeError):
+                # 内容域缺少 key/file 时由 factory 回落 NoneAdapter，保持 fail-closed。
+                self.CONTENT_AI_API_KEY = None
 
 
 settings = Settings()

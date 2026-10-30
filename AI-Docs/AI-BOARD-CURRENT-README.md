@@ -91,18 +91,18 @@ The current chat experience is too brittle for natural user language.
 
 Observed issue:
 
-- Input: `找出最便宜的铭达办公桌`
+- Input: `找出最便宜的pilot办公桌`
 - Previous behavior: `资料不足，无法形成可靠答案。`
 
 Root causes:
 
 - The planner was mostly keyword/rule based and originally split only on whitespace. Chinese natural sentences could become one long keyword, causing `product.search` to miss structured data.
-- The pilot data contains `铭达` office desk products, but their `face_price` values are `99999`, which means `待核价`. Even when products are found, the system cannot honestly determine the cheapest item from placeholder prices.
+- The pilot data contains `pilot` office desk products, but their `face_price` values are `99999`, which means `待核价`. Even when products are found, the system cannot honestly determine the cheapest item from placeholder prices.
 
 Recent local fix:
 
 - `QueryEntities` now has `price_sort`.
-- `RuleBasedPlanner` extracts known Chinese business terms such as `铭达` and `办公桌`.
+- `RuleBasedPlanner` extracts known Chinese business terms such as `pilot` and `办公桌`.
 - `RuleBasedPlanner` recognizes `最便宜` / `最低价` / `价格最低` as ascending price intent.
 - `product.search` accepts `keywords` and applies each keyword as an AND filter across product number, name, description, material, specification, category, brand, and supplier.
 - `product.search` supports `sort_by=face_price` and `sort_order=asc`, pushing `99999` placeholder prices after real prices.

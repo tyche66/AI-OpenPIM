@@ -1,4 +1,4 @@
-"""sunon_pilot_product_fields
+"""pilot_product_fields
 
 Revision ID: 0009_sunon_pilot_product_fields
 Revises: 0008_v11_audit_workflow_ocr
